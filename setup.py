@@ -1,13 +1,13 @@
-from setuptools import setup, find_namespace_packages
+from setuptools import setup, find_packages
 
 setup(
     name="wisent-extractors",
-    version="0.1.1",
+    version="0.1.2",
     author="Lukasz Bartoszcze and the Wisent Team",
     author_email="lukasz.bartoszcze@wisent.ai",
     description="Benchmark extractors for lm-eval-harness and HuggingFace tasks, used by the wisent package family",
     url="https://github.com/wisent-ai/wisent-extractors",
-    packages=find_namespace_packages(include=["wisent.*"]),
+    packages=find_packages(include=["wisent", "wisent.*"]),
     python_requires=">=3.9",
     install_requires=[
         "wisent>=0.10.0",  # ContrastivePair, logger, errors, constants live in wisent-core for now
