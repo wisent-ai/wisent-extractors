@@ -67,7 +67,21 @@ class FrenchBenchExtractor(LMEvalBenchmarkExtractor):
         log = bind(_LOG, task=getattr(lm_eval_task_data, "NAME", "unknown"))
 
         max_items = self._normalize_limit(limit)
-        docs = self.load_docs(lm_eval_task_data, max_items, preferred_doc=preferred_doc, train_ratio=train_ratio)
+        if lm_eval_task_data is None:
+            from datasets import load_dataset
+            task_name = getattr(self, "task_name", "")
+            docs = []
+            if task_name == "french_bench_fquadv2_hasAns":
+                for s in ("test_hasAns", "valid_hasAns"):
+                    try:
+                        ds = load_dataset("manu/fquad2_test", split=s, trust_remote_code=True)
+                        docs.extend(list(ds))
+                    except Exception:
+                        continue
+            if max_items:
+                docs = docs[:max_items]
+        else:
+                    docs = self.load_docs(lm_eval_task_data, max_items, preferred_doc=preferred_doc, train_ratio=train_ratio)
 
         pairs: list[ContrastivePair] = []
 

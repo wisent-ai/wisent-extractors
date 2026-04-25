@@ -118,12 +118,17 @@ class MmmuExtractor(LMEvalBenchmarkExtractor):
         if answer_idx < 0 or answer_idx >= len(options):
             return None
 
-        # Get correct and random incorrect option
         correct = str(options[answer_idx]).strip()
-
-        # Get an incorrect option (next one, wrapping around)
-        incorrect_idx = (answer_idx + 1) % len(options)
-        incorrect = str(options[incorrect_idx]).strip()
+        if not correct:
+            return None
+        incorrect = ""
+        for off in range(1, len(options)):
+            cand = str(options[(answer_idx + off) % len(options)]).strip()
+            if cand and cand != correct:
+                incorrect = cand
+                break
+        if not incorrect:
+            return None
 
         # Format question (note: images are referenced as "<image N>" but we ignore them)
         formatted_question = f"Question: {question}"
