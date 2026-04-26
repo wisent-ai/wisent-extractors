@@ -90,18 +90,27 @@ class LingolyExtractor(LMEvalBenchmarkExtractor):
                     log.debug("Could not parse answers string")
                     return None
 
-                # Get first answer as correct response
+                # Iterate through answer keys to find a non-empty answer. Some
+                # lingoly rows have an empty first answer slot but valid later
+                # entries; previously the extractor returned None on the very
+                # first empty key.
                 if not answers_dict or not isinstance(answers_dict, dict):
                     return None
 
-                first_key = list(answers_dict.keys())[0]
-                correct_answer = answers_dict[first_key]
-
-                # Handle list of possible answers
-                if isinstance(correct_answer, list):
-                    correct_answer = correct_answer[0] if correct_answer else ""
-
-                correct_answer = str(correct_answer).strip()
+                correct_answer = ""
+                for _v in answers_dict.values():
+                    if isinstance(_v, list):
+                        for _candidate in _v:
+                            _t = str(_candidate).strip() if _candidate is not None else ""
+                            if _t:
+                                correct_answer = _t
+                                break
+                    elif _v is not None:
+                        _t = str(_v).strip()
+                        if _t:
+                            correct_answer = _t
+                    if correct_answer:
+                        break
 
                 if not correct_answer:
                     return None
