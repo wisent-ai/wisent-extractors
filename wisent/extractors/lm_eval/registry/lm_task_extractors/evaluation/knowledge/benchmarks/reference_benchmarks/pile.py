@@ -49,30 +49,41 @@ class PileExtractor(LMEvalBenchmarkExtractor):
         log = bind(_LOG, task=getattr(lm_eval_task_data, "NAME", "unknown"))
 
         max_items = self._normalize_limit(limit)
-        # Upstream EleutherAI/pile is deprecated/gated. Fall back to NeelNanda/pile-10k
-        # (public 10k-row sample) and filter by the pile subset encoded in task_name.
+        # Prefer the docs that lm-eval already loaded (honours train_ratio split).
+        # Only fall back to NeelNanda/pile-10k when the lm-eval task isn't available
+        # (e.g. EleutherAI/pile gated and unreachable).
         task_name = getattr(self, "task_name", getattr(lm_eval_task_data, "NAME", "pile") if lm_eval_task_data else "pile")
-        subset_map = {
-            "pile_arxiv": "ArXiv", "pile_bookcorpus2": "BookCorpus2", "pile_books3": "Books3",
-            "pile_dm-mathematics": "DM Mathematics", "pile_enron": "Enron Emails",
-            "pile_europarl": "EuroParl", "pile_freelaw": "FreeLaw", "pile_github": "Github",
-            "pile_gutenberg": "Gutenberg (PG-19)", "pile_hackernews": "HackerNews",
-            "pile_nih-exporter": "NIH ExPorter", "pile_opensubtitles": "OpenSubtitles",
-            "pile_openwebtext2": "OpenWebText2", "pile_philpapers": "PhilPapers",
-            "pile_pile-cc": "Pile-CC", "pile_pubmed-abstracts": "PubMed Abstracts",
-            "pile_pubmed-central": "PubMed Central", "pile_stackexchange": "StackExchange",
-            "pile_ubuntu-irc": "Ubuntu IRC", "pile_uspto": "USPTO Backgrounds",
-            "pile_wikipedia": "Wikipedia (en)", "pile_youtubesubtitles": "YoutubeSubtitles",
-        }
-        wanted = subset_map.get(task_name)
-        from datasets import load_dataset
-        ds = load_dataset("NeelNanda/pile-10k", split="train")
-        if wanted:
-            docs = [r for r in ds if r["meta"].get("pile_set_name") == wanted]
-        else:
-            docs = list(ds)
-        if max_items:
-            docs = docs[:max_items]
+        docs: list[dict[str, Any]] = []
+        if lm_eval_task_data is not None:
+            try:
+                docs = self.load_docs(
+                    lm_eval_task_data, max_items, preferred_doc=preferred_doc, train_ratio=train_ratio
+                )
+            except Exception as exc:
+                log.warning("load_docs failed for pile, falling back to NeelNanda/pile-10k", extra={"error": str(exc)})
+                docs = []
+        if not docs:
+            subset_map = {
+                "pile_arxiv": "ArXiv", "pile_bookcorpus2": "BookCorpus2", "pile_books3": "Books3",
+                "pile_dm-mathematics": "DM Mathematics", "pile_enron": "Enron Emails",
+                "pile_europarl": "EuroParl", "pile_freelaw": "FreeLaw", "pile_github": "Github",
+                "pile_gutenberg": "Gutenberg (PG-19)", "pile_hackernews": "HackerNews",
+                "pile_nih-exporter": "NIH ExPorter", "pile_opensubtitles": "OpenSubtitles",
+                "pile_openwebtext2": "OpenWebText2", "pile_philpapers": "PhilPapers",
+                "pile_pile-cc": "Pile-CC", "pile_pubmed-abstracts": "PubMed Abstracts",
+                "pile_pubmed-central": "PubMed Central", "pile_stackexchange": "StackExchange",
+                "pile_ubuntu-irc": "Ubuntu IRC", "pile_uspto": "USPTO Backgrounds",
+                "pile_wikipedia": "Wikipedia (en)", "pile_youtubesubtitles": "YoutubeSubtitles",
+            }
+            wanted = subset_map.get(task_name)
+            from datasets import load_dataset
+            ds = load_dataset("NeelNanda/pile-10k", split="train")
+            if wanted:
+                docs = [r for r in ds if r["meta"].get("pile_set_name") == wanted]
+            else:
+                docs = list(ds)
+            if max_items:
+                docs = docs[:max_items]
 
         pairs: list[ContrastivePair] = []
 
@@ -100,8 +111,8 @@ class PileExtractor(LMEvalBenchmarkExtractor):
 
         try:
             # Pile/pile_10k format: text-only (perplexity task)
-            if "text" in doc and len(doc) <= 3:
-                text = str(doc.get("text", "")).strip()
+            if "text" in doc and isinstance(doc.get("text"), str):
+                text = doc["text"].strip()
                 if text:
                     words = text.split()
                     if len(words) >= 2:
