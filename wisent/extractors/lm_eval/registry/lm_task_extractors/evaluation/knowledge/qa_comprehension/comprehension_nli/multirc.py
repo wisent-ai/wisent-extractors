@@ -72,10 +72,29 @@ class MultiRCExtractor(LMEvalBenchmarkExtractor):
         log = bind(_LOG, doc_id=doc.get("id", "unknown"))
 
         try:
-            paragraph = str(doc.get("paragraph", "")).strip()
-            question = str(doc.get("question")).strip()
-            answer = str(doc.get("answer")).strip()
-            label = doc.get("label")
+            paragraph = str(doc.get("paragraph") or "").strip()
+            question = str(doc.get("question") or "").strip()
+            answer = str(doc.get("answer") or "").strip()
+            raw_label = doc.get("label")
+            # MultiRC variants sometimes store label as a numeric string ("0"/"1"),
+            # as a bool, or as yes/no/true/false text. Coerce to int 0/1.
+            label: int | None
+            if isinstance(raw_label, bool):
+                label = int(raw_label)
+            elif isinstance(raw_label, int):
+                label = raw_label
+            elif isinstance(raw_label, str):
+                s = raw_label.strip().lower()
+                if s in ("0", "1"):
+                    label = int(s)
+                elif s in ("yes", "true", "correct"):
+                    label = 1
+                elif s in ("no", "false", "incorrect"):
+                    label = 0
+                else:
+                    label = None
+            else:
+                label = None
 
             if not paragraph or not question or not answer or label not in {0, 1}:
                 log.debug(
