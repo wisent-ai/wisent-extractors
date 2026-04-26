@@ -9,7 +9,7 @@ from wisent.core.utils.cli.cli_logger import setup_logger, bind
 
 from latex2sympy2_extended import latex2sympy
 from sympy import latex
-from wisent.core.reading.evaluators.benchmark_specific.math_parsing.scripts import strip_string
+from wisent.core.reading.evaluators.core.benchmark_specific.specialized.math_parsing.internals._scripts_parsing import strip_string
 
 if TYPE_CHECKING:
     from lm_eval.api.task import ConfigurableTask
