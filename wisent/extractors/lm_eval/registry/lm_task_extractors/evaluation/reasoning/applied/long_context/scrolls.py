@@ -49,7 +49,26 @@ class ScrollsExtractor(LMEvalBenchmarkExtractor):
         log = bind(_LOG, task=getattr(lm_eval_task_data, "NAME", "unknown"))
 
         max_items = self._normalize_limit(limit)
-        docs = self.load_docs(lm_eval_task_data, max_items, preferred_doc=preferred_doc, train_ratio=train_ratio)
+        if lm_eval_task_data is None or True:  # Always bypass lm-eval - it crashes with leaked semaphore
+            from datasets import load_dataset
+            task_name = getattr(self, "task_name", "")
+            cfg_map = {
+                "scrolls_govreport": "gov_report",
+                "scrolls_narrativeqa": "narrative_qa",
+                "scrolls_qasper": "qasper",
+                "scrolls_qmsum": "qmsum",
+                "scrolls_summscreenfd": "summ_screen_fd",
+            }
+            cfg = cfg_map.get(task_name, "narrative_qa")
+            docs = []
+            for s in ("validation", "train", "test"):
+                try:
+                    ds = load_dataset("tau/scrolls", cfg, split=s, trust_remote_code=True)
+                    docs.extend(list(ds))
+                except Exception:
+                    continue
+            if max_items:
+                docs = docs[:max_items]
 
         pairs: list[ContrastivePair] = []
 
@@ -76,10 +95,14 @@ class ScrollsExtractor(LMEvalBenchmarkExtractor):
         log = bind(_LOG, doc_id=doc.get("id", "unknown"))
 
         try:
-            # SCROLLS format: input + outputs (list)
-            if "input" in doc and "outputs" in doc:
+            # SCROLLS format: input + outputs (list) OR input + output (single string)
+            if "input" in doc and ("outputs" in doc or "output" in doc):
                 inp = str(doc.get("input", "")).strip()
                 outputs = doc.get("outputs", [])
+                if not outputs:
+                    out_str = str(doc.get("output", "")).strip()
+                    if out_str:
+                        outputs = [out_str]
                 if inp and isinstance(outputs, list) and outputs:
                     correct = str(outputs[0]).strip()
                     if correct:

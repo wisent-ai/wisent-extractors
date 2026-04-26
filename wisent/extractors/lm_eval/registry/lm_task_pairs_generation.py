@@ -367,6 +367,15 @@ def build_contrastive_pairs(
         upload_pairs_to_hf(task_name, all_pairs)
         return all_pairs
 
+    BYPASS_LM_EVAL_LOAD = ("scrolls_",)
+    if any(task_name.startswith(p) for p in BYPASS_LM_EVAL_LOAD):
+        try:
+            pairs = extractor.extract_contrastive_pairs(None, limit=max_items, train_ratio=train_ratio)
+        except TypeError:
+            pairs = extractor.extract_contrastive_pairs(limit=max_items)
+        upload_pairs_to_hf(task_name, pairs)
+        return _add_evaluator_to_pairs(pairs, evaluator_name, task_name)
+
     try:
         task_obj = loader.load_lm_eval_task(task_name)
     except Exception:
