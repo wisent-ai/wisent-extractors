@@ -75,18 +75,49 @@ class ArcChallengeExtractor(LMEvalBenchmarkExtractor):
 
         try:
             question = str(doc.get("question", "")).strip()
-            choices_dict = doc.get("choices", {})
-            choices = choices_dict["text"]
-            answer = str(doc.get("answerKey", "")).strip()
-            answer_idx = int(ord(answer) - ord('A'))
+            choices_dict = doc.get("choices", {}) or {}
+            # Some arc_challenge_mt rows have choices.label without choices.text or
+            # choices stored as a flat list — handle both shapes.
+            if isinstance(choices_dict, dict):
+                choices = choices_dict.get("text") or choices_dict.get("choices") or []
+                labels = choices_dict.get("label") or []
+            elif isinstance(choices_dict, list):
+                choices = choices_dict
+                labels = []
+            else:
+                choices = []
+                labels = []
 
-            if not question or not choices or not (0 <= answer_idx < len(choices)):
+            answer_raw = doc.get("answerKey", doc.get("answer", ""))
+            answer = str(answer_raw if answer_raw is not None else "").strip()
+            answer_idx: int | None = None
+            if answer:
+                # Letter (A/B/C/...) — preferred when present
+                if len(answer) == 1 and answer.isalpha():
+                    answer_idx = ord(answer.upper()) - ord('A')
+                # Position via labels list if provided (e.g. ["A","B","C","D"])
+                elif labels and answer in labels:
+                    answer_idx = labels.index(answer)
+                # Numeric ("1".."N", possibly 1-indexed in arc_*_mt)
+                else:
+                    try:
+                        idx = int(answer)
+                    except ValueError:
+                        idx = None
+                    if idx is not None:
+                        # Try 0-indexed first, then 1-indexed
+                        if 0 <= idx < len(choices):
+                            answer_idx = idx
+                        elif 1 <= idx <= len(choices):
+                            answer_idx = idx - 1
+
+            if not question or not choices or answer_idx is None or not (0 <= answer_idx < len(choices)):
                 log.debug(
                     "Skipping doc due to missing/invalid fields",
                     extra={"doc": doc},
                 )
                 return None
-            
+
             correct = choices[answer_idx]
             incorrect = choices[(answer_idx+1)%len(choices)]
 
