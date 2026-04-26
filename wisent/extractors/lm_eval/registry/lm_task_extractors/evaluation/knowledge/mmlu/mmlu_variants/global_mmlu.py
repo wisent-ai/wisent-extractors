@@ -108,13 +108,16 @@ class GlobalMmluExtractor(LMEvalBenchmarkExtractor):
             # Format 2: question/instruction + option_a/b/c/d + answer (Global MMLU / MMMLU style)
             elif ("instruction" in doc or "question" in doc) and "option_a" in doc:
                 question = str(doc.get("instruction", doc.get("question", ""))).strip()
+                # Keep positional alignment: a/b/c/d → indices 0/1/2/3 even if some are
+                # empty. Filtering empties would shift the answer-letter index, e.g.
+                # Global-MMLU college_chemistry has rows where option_a == "" and the
+                # answer letter still refers to the original 4-option layout.
                 choices = [
                     str(doc.get("option_a", "")).strip(),
                     str(doc.get("option_b", "")).strip(),
                     str(doc.get("option_c", "")).strip(),
                     str(doc.get("option_d", "")).strip(),
                 ]
-                choices = [c for c in choices if c]
                 answer = doc.get("answer", "A")
                 answer_idx = ord(str(answer).upper()) - ord('A')
 
@@ -141,8 +144,23 @@ class GlobalMmluExtractor(LMEvalBenchmarkExtractor):
                 return None
 
             correct = choices[answer_idx]
-            incorrect_idx = (answer_idx + 1) % len(choices)
-            incorrect = choices[incorrect_idx]
+            if not correct:
+                # The "correct" option is empty in the data — extractor cannot produce
+                # a meaningful pair. (Distinct from filtering empties up front, which
+                # caused Global-MMLU answer-letter mis-alignment.)
+                log.debug("Skipping doc — correct option text is empty", extra={"doc": doc})
+                return None
+            # Pick a non-empty incorrect option
+            incorrect = ""
+            n = len(choices)
+            for offset in range(1, n):
+                cand = choices[(answer_idx + offset) % n]
+                if cand and cand != correct:
+                    incorrect = cand
+                    break
+            if not incorrect:
+                log.debug("Skipping doc — no non-empty distinct incorrect option", extra={"doc": doc})
+                return None
 
             metadata = {
                 "label": "global_mmlu",
