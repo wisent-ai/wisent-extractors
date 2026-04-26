@@ -99,19 +99,45 @@ class MmmuExtractor(LMEvalBenchmarkExtractor):
             answer: str  # Letter like "A", "B", "C", "D"
         }
         """
-        if "question" not in doc or "options" not in doc or "answer" not in doc:
+        if "question" not in doc or "answer" not in doc:
             return None
 
         question = str(doc["question"]).strip()
-        options = doc["options"]
-        answer = str(doc["answer"]).strip().upper()
+        options = doc.get("options")
+        answer_raw = doc["answer"]
+        answer = str(answer_raw).strip()
 
-        if not question or not options or not answer:
+        if not question or not answer:
             return None
 
-        # Convert letter answer to index
-        if len(answer) == 1 and answer.isalpha():
-            answer_idx = ord(answer) - ord('A')
+        # MMMU stores options as a string repr of a list ("['A','B','C','D']") or as
+        # the literal "[]" for open-ended numeric answers. Parse to list.
+        if isinstance(options, str):
+            try:
+                import ast
+                options = ast.literal_eval(options)
+            except Exception:
+                options = []
+        if not isinstance(options, list):
+            options = []
+
+        # Open-ended numeric/text answer (no multiple-choice list).
+        if not options:
+            metadata = {
+                "label": "mmmu",
+                "subfield": doc.get("subfield", "unknown"),
+            }
+            return self._build_pair(
+                question=f"Question: {question}",
+                correct=answer,
+                incorrect=f"not {answer}",
+                metadata=metadata,
+            )
+
+        # Multiple-choice path: letter answer maps to index.
+        ans_upper = answer.upper()
+        if len(ans_upper) == 1 and ans_upper.isalpha():
+            answer_idx = ord(ans_upper) - ord('A')
         else:
             return None
 
