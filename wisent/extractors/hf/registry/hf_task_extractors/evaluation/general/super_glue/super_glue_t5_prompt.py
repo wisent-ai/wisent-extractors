@@ -50,6 +50,83 @@ class SuperGlueT5PromptExtractor(LMEvalBenchmarkExtractor):
         log = bind(_LOG, doc_id=doc.get("id", "unknown"))
 
         try:
+            # RTE / CB format — premise + hypothesis + label (entailment)
+            if "premise" in doc and "hypothesis" in doc and "label" in doc and "choice1" not in doc:
+                premise = str(doc.get("premise", "")).strip()
+                hypothesis = str(doc.get("hypothesis", "")).strip()
+                label = doc.get("label")
+                # CB: 0=entailment 1=contradiction 2=neutral; RTE: 0=entailment 1=not_entailment
+                label_map_rte = {0: "True", 1: "False"}
+                label_map_cb = {0: "True", 1: "False", 2: "Neither"}
+                if premise and hypothesis and isinstance(label, int):
+                    if label in label_map_cb:
+                        correct = label_map_cb[label] if label in (0, 1, 2) else None
+                        incorrect = "False" if correct == "True" else "True"
+                        return self._build_pair(
+                            question=f"Premise: {premise}\nHypothesis: {hypothesis}\nDoes the premise entail the hypothesis?",
+                            correct=correct,
+                            incorrect=incorrect,
+                            metadata={"label": "super_glue_t5_prompt"},
+                        )
+
+            # WiC format — sentence1 + sentence2 + word + label
+            if "sentence1" in doc and "sentence2" in doc and "word" in doc and "label" in doc:
+                s1 = str(doc.get("sentence1", "")).strip()
+                s2 = str(doc.get("sentence2", "")).strip()
+                w = str(doc.get("word", "")).strip()
+                label = doc.get("label")
+                if s1 and s2 and w and isinstance(label, int):
+                    correct = "True" if label == 1 else "False"
+                    incorrect = "False" if label == 1 else "True"
+                    return self._build_pair(
+                        question=f"Sentence 1: {s1}\nSentence 2: {s2}\nDoes the word \"{w}\" mean the same thing in both?",
+                        correct=correct,
+                        incorrect=incorrect,
+                        metadata={"label": "super_glue_t5_prompt"},
+                    )
+
+            # MultiRC format — paragraph + question + answer + label
+            if "paragraph" in doc and "question" in doc and "answer" in doc and "label" in doc:
+                p = str(doc.get("paragraph", "")).strip()
+                q = str(doc.get("question", "")).strip()
+                a = str(doc.get("answer", "")).strip()
+                label = doc.get("label")
+                if p and q and a and isinstance(label, int):
+                    correct = "True" if label == 1 else "False"
+                    incorrect = "False" if label == 1 else "True"
+                    return self._build_pair(
+                        question=f"Paragraph: {p}\nQuestion: {q}\nAnswer: {a}\nIs the answer correct?",
+                        correct=correct,
+                        incorrect=incorrect,
+                        metadata={"label": "super_glue_t5_prompt"},
+                    )
+
+            # ReCoRD format — passage + query + entities + answers
+            if "passage" in doc and "query" in doc and ("entities" in doc or "answers" in doc):
+                passage = str(doc.get("passage", "")).strip()
+                query = str(doc.get("query", "")).strip()
+                answers = doc.get("answers") or []
+                if isinstance(answers, str):
+                    answers = [answers] if answers else []
+                entities = doc.get("entities") or []
+                if isinstance(entities, str):
+                    entities = [entities]
+                if isinstance(answers, list) and answers and passage and query:
+                    correct = str(answers[0]).strip()
+                    incorrect = ""
+                    for e in entities:
+                        e_str = str(e).strip()
+                        if e_str and e_str != correct:
+                            incorrect = e_str
+                            break
+                    if correct and incorrect:
+                        return self._build_pair(
+                            question=f"{passage}\n\n{query}",
+                            correct=correct,
+                            incorrect=incorrect,
+                            metadata={"label": "super_glue_t5_prompt"},
+                        )
+
             # COPA format — premise + choice1 + choice2 + question + label
             if "premise" in doc and "choice1" in doc and "choice2" in doc and "label" in doc:
                 premise = str(doc.get("premise", "")).strip()

@@ -135,8 +135,8 @@ class GalicianBenchMultipleChoiceExtractor(LMEvalBenchmarkExtractor):
                         label="gl_bench_mc",
                     )
 
-            if "question" in doc and "choices" in doc:
-                question = str(doc.get("question", "")).strip()
+            if ("question" in doc or "question_stem" in doc) and "choices" in doc:
+                question = str(doc.get("question", doc.get("question_stem", ""))).strip()
                 choices = doc.get("choices", {})
                 answer_key = doc.get("answerKey", "") or doc.get("answer", "")
 

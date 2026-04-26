@@ -262,7 +262,6 @@ EXTRACTORS_MATH_CODING: dict[str, str] = {
     "sciq": f"{base_import}babi_extractor:SciQExtractor",
     "squadv2": f"{base_import}squad_extractor:SQuADv2Extractor",
     "basque-glue": f"{base_import}basqueglue:BasqueglueExtractor",
-    "evalita-sp_sum_task_fp-small_p1": f"{base_import}evalita_sp_sum_task_fp_small_p1:EvalitaSpSumTaskFpSmallP1Extractor",
     "penn_treebank": f"{base_import}penn_treebank:PennTreebankExtractor",
     "ptb": f"{base_import}penn_treebank:PennTreebankExtractor",
     "self_consistency": f"{base_import}self_consistency:SelfConsistencyExtractor",
