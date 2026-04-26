@@ -86,10 +86,10 @@ class FldExtractor(LMEvalBenchmarkExtractor):
         log = bind(_LOG, doc_id=doc.get("id", "unknown"))
 
         try:
-            # FLD-specific fields
-            hypothesis = doc.get("hypothesis", "").strip()
-            context = doc.get("context", "").strip()
-            proof_label = doc.get("proof_label", "").strip().upper()
+            # FLD-specific fields - coerce to str so None/non-string values don't AttributeError
+            hypothesis = str(doc.get("hypothesis") or "").strip()
+            context = str(doc.get("context") or "").strip()
+            proof_label = str(doc.get("proof_label") or "").strip().upper()
 
             if not hypothesis or not context or not proof_label:
                 log.debug(
@@ -98,7 +98,13 @@ class FldExtractor(LMEvalBenchmarkExtractor):
                 )
                 return None
 
-            # Valid labels for FLD
+            # Valid labels for FLD - alias common alternative spellings to canonical labels
+            label_aliases = {
+                "PROOF": "PROVED", "PROVE": "PROVED", "TRUE": "PROVED",
+                "DISPROOF": "DISPROVED", "DISPROVE": "DISPROVED", "FALSE": "DISPROVED",
+                "NEUTRAL": "UNKNOWN", "UNK": "UNKNOWN", "NONE": "UNKNOWN",
+            }
+            proof_label = label_aliases.get(proof_label, proof_label)
             valid_labels = ["PROVED", "DISPROVED", "UNKNOWN"]
             if proof_label not in valid_labels:
                 log.debug(
