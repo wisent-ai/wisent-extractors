@@ -92,13 +92,13 @@ class TinybenchmarksExtractor(LMEvalBenchmarkExtractor):
             # Format 2: instruction + option_a/b/c/d + answer (MMMLU style)
             elif "instruction" in doc and "option_a" in doc:
                 question = str(doc.get("instruction", "")).strip()
+                # Preserve a/b/c/d -> 0/1/2/3 positional alignment.
                 choices = [
                     str(doc.get("option_a", "")).strip(),
                     str(doc.get("option_b", "")).strip(),
                     str(doc.get("option_c", "")).strip(),
                     str(doc.get("option_d", "")).strip(),
                 ]
-                choices = [c for c in choices if c]
                 answer = doc.get("answer", "A")
                 answer_idx = ord(str(answer).upper()) - ord('A')
 
@@ -125,8 +125,19 @@ class TinybenchmarksExtractor(LMEvalBenchmarkExtractor):
                 return None
 
             correct = choices[answer_idx]
-            incorrect_idx = (answer_idx + 1) % len(choices)
-            incorrect = choices[incorrect_idx]
+            if not correct:
+                log.debug("Skipping doc — correct option text is empty", extra={"doc": doc})
+                return None
+            incorrect = ""
+            n = len(choices)
+            for offset in range(1, n):
+                cand = choices[(answer_idx + offset) % n]
+                if cand and cand != correct:
+                    incorrect = cand
+                    break
+            if not incorrect:
+                log.debug("Skipping doc — no non-empty distinct incorrect option", extra={"doc": doc})
+                return None
 
             metadata = {
                 "label": "tinybenchmarks",
