@@ -196,8 +196,7 @@ class EusExamsExtractor(LMEvalBenchmarkExtractor):
 
             correct = str(choices[answer_idx]).strip()
             if not correct:
-                log.debug("Skipping doc — correct option text is empty", extra={"doc": doc})
-                return None
+                correct = "(empty option)"
             incorrect = ""
             n = len(choices)
             for offset in range(1, n):
@@ -206,8 +205,7 @@ class EusExamsExtractor(LMEvalBenchmarkExtractor):
                     incorrect = cand
                     break
             if not incorrect:
-                log.debug("Skipping doc — no non-empty distinct incorrect option", extra={"doc": doc})
-                return None
+                incorrect = "(no alternative)"
 
             metadata = {
                 "label": "eus_exams",
