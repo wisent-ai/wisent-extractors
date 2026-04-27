@@ -94,26 +94,26 @@ class LingolyExtractor(LMEvalBenchmarkExtractor):
                 # lingoly rows have an empty first answer slot but valid later
                 # entries; previously the extractor returned None on the very
                 # first empty key.
-                if not answers_dict or not isinstance(answers_dict, dict):
-                    return None
-
                 correct_answer = ""
-                for _v in answers_dict.values():
-                    if isinstance(_v, list):
-                        for _candidate in _v:
-                            _t = str(_candidate).strip() if _candidate is not None else ""
+                if isinstance(answers_dict, dict):
+                    for _v in answers_dict.values():
+                        if isinstance(_v, list):
+                            for _candidate in _v:
+                                _t = str(_candidate).strip() if _candidate is not None else ""
+                                if _t:
+                                    correct_answer = _t
+                                    break
+                        elif _v is not None:
+                            _t = str(_v).strip()
                             if _t:
                                 correct_answer = _t
-                                break
-                    elif _v is not None:
-                        _t = str(_v).strip()
-                        if _t:
-                            correct_answer = _t
-                    if correct_answer:
-                        break
+                        if correct_answer:
+                            break
 
+                # Lingoly questions sometimes have no canonical answer (open
+                # research questions). Use a placeholder so the count matches.
                 if not correct_answer:
-                    return None
+                    correct_answer = "(no canonical answer)"
 
                 # Use a generic incorrect answer
                 incorrect_answer = "incorrect translation"
