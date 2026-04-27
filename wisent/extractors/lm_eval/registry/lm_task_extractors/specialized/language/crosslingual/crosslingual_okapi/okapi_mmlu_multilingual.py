@@ -99,13 +99,13 @@ class OkapiMmluMultilingualExtractor(LMEvalBenchmarkExtractor):
             # Format 2: instruction + option_a/b/c/d + answer (MMMLU style)
             elif "instruction" in doc and "option_a" in doc:
                 question = str(doc.get("instruction", "")).strip()
+                # Preserve a/b/c/d -> 0/1/2/3 positional alignment.
                 choices = [
                     str(doc.get("option_a", "")).strip(),
                     str(doc.get("option_b", "")).strip(),
                     str(doc.get("option_c", "")).strip(),
                     str(doc.get("option_d", "")).strip(),
                 ]
-                choices = [c for c in choices if c]
                 answer = doc.get("answer", "A")
                 answer_idx = ord(str(answer).upper()) - ord('A')
 
@@ -131,9 +131,18 @@ class OkapiMmluMultilingualExtractor(LMEvalBenchmarkExtractor):
                 )
                 return None
 
-            correct = choices[answer_idx]
-            incorrect_idx = (answer_idx + 1) % len(choices)
-            incorrect = choices[incorrect_idx]
+            correct = str(choices[answer_idx]).strip()
+            if not correct:
+                correct = "(empty option)"
+            incorrect = ""
+            n = len(choices)
+            for offset in range(1, n):
+                cand = str(choices[(answer_idx + offset) % n]).strip()
+                if cand and cand != correct:
+                    incorrect = cand
+                    break
+            if not incorrect:
+                incorrect = "(no alternative)"
 
             metadata = {
                 "label": "okapi/mmlu_multilingual",

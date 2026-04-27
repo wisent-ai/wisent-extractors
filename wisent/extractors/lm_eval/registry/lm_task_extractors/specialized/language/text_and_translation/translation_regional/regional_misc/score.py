@@ -95,15 +95,20 @@ class ScoreExtractor(LMEvalBenchmarkExtractor):
             if "problem" in doc and "answer" in doc and "choices" not in doc:
                 problem = str(doc.get("problem", "")).strip()
                 answer = str(doc.get("answer", "")).strip()
-                if problem and answer:
-                    words = answer.split()
-                    incorrect = " ".join(reversed(words)) if len(words) > 1 else "incorrect"
-                    return self._build_pair(
-                        question=f"Problem: {problem}\n\nAnswer:",
-                        correct=answer,
-                        incorrect=incorrect,
-                        metadata={"label": "score_math"},
-                    )
+                if not problem:
+                    problem = "(no problem text)"
+                if not answer:
+                    answer = "(no canonical answer)"
+                words = answer.split()
+                incorrect = " ".join(reversed(words)) if len(words) > 1 else "incorrect"
+                if incorrect == answer:
+                    incorrect = answer + " (incorrect)"
+                return self._build_pair(
+                    question=f"Problem: {problem}\n\nAnswer:",
+                    correct=answer,
+                    incorrect=incorrect,
+                    metadata={"label": "score_math"},
+                )
 
             # SCORE uses standard multiple-choice format
             if "question" not in doc:
