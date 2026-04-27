@@ -169,9 +169,17 @@ class PalomaExtractor(LMEvalBenchmarkExtractor):
             # Paloma docs have a 'text' field with the passage
             text = doc.get("text", "").strip()
 
-            if not text or len(text.split()) < 3:  # Skip empty/single-word texts
-                log.debug("Skipping doc with insufficient text", extra={"text_len": len(text)})
-                return None
+            if not text or len(text.split()) < 3:  # Insufficient text — emit a placeholder pair
+                # Paloma sub-corpora (dolma, c4, etc.) contain a non-trivial fraction of
+                # very short / empty passages (boundary markers, single tokens). We still
+                # need one pair per doc to match the benchmark size.
+                placeholder = text or "(empty passage)"
+                return ContrastivePair(
+                    prompt="Continue this text:",
+                    positive_response=PositiveResponse(model_response=placeholder + " "),
+                    negative_response=NegativeResponse(model_response="(garbled) " + placeholder),
+                    label="paloma",
+                )
 
             # Take a reasonable chunk (first ~PALOMA_MAX_WORDS words or ~PALOMA_MAX_CHARS chars)
             words = text.split()
