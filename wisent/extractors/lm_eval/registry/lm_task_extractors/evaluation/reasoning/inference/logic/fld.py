@@ -89,14 +89,24 @@ class FldExtractor(LMEvalBenchmarkExtractor):
             # FLD-specific fields - coerce to str so None/non-string values don't AttributeError
             hypothesis = str(doc.get("hypothesis") or "").strip()
             context = str(doc.get("context") or "").strip()
-            proof_label = str(doc.get("proof_label") or "").strip().upper()
+            # FLD's world_assump_label is the canonical answer field per the lm-eval
+            # config; proof_label is sometimes used. Try both.
+            proof_label = str(
+                doc.get("proof_label")
+                or doc.get("world_assump_label")
+                or ""
+            ).strip().upper()
 
-            if not hypothesis or not context or not proof_label:
+            if not hypothesis or not proof_label:
                 log.debug(
                     "Skipping doc due to missing required FLD fields",
                     extra={"doc": doc},
                 )
                 return None
+            # Empty context is legitimate (some FLD docs have rule-only premises);
+            # use a placeholder so the prompt still reads grammatically.
+            if not context:
+                context = "(no premises provided)"
 
             # Valid labels for FLD - alias common alternative spellings to canonical labels
             label_aliases = {
