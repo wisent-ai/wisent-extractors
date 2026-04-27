@@ -8,7 +8,7 @@ setup(
     description="Benchmark extractors for lm-eval-harness and HuggingFace tasks, used by the wisent package family",
     url="https://github.com/wisent-ai/wisent-extractors",
     packages=find_packages(include=["wisent", "wisent.*"]),
-    python_requires=">=3.9",
+    python_requires=">=3.10",
     install_requires=[
         "wisent>=0.10.0",  # ContrastivePair, logger, errors, constants live in wisent-core for now
         "datasets>=2.0",
