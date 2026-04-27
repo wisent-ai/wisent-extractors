@@ -5,9 +5,11 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write   # Required for OIDC; even when using a password the
-                        # newer pypi-publish action attempts OIDC introspection.
+    # Intentionally NOT granting id-token: write. The newer
+    # pypa/gh-action-pypi-publish auto-prefers OIDC trusted publishing when
+    # the OIDC token is available, but this PyPI project is configured for
+    # API-token auth (PYPI_API_TOKEN secret), not trusted publishing. Without
+    # id-token: write the action falls through to password mode.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
@@ -20,4 +22,5 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
