@@ -73,15 +73,23 @@ class LeaderboardExtractor(LMEvalBenchmarkExtractor):
             if "problem" in doc and "answer" in doc:
                 problem = str(doc.get("problem", "")).strip()
                 answer = str(doc.get("answer", "")).strip()
-                if problem and answer:
-                    words = answer.split()
-                    incorrect = " ".join(reversed(words)) if len(words) > 1 else "incorrect"
-                    return self._build_pair(
-                        question=f"Problem: {problem}\n\nAnswer:",
-                        correct=answer,
-                        incorrect=incorrect,
-                        metadata={"label": "leaderboard_math"},
-                    )
+                # Always emit a pair so num_pairs == train_split. Use placeholders
+                # for the ~1/467 hendrycks_math rows where problem or answer is
+                # empty after process_docs.
+                if not problem:
+                    problem = "(no problem text)"
+                if not answer:
+                    answer = "(no canonical answer)"
+                words = answer.split()
+                incorrect = " ".join(reversed(words)) if len(words) > 1 else "incorrect"
+                if incorrect == answer:
+                    incorrect = answer + " (incorrect)"
+                return self._build_pair(
+                    question=f"Problem: {problem}\n\nAnswer:",
+                    correct=answer,
+                    incorrect=incorrect,
+                    metadata={"label": "leaderboard_math"},
+                )
 
             # leaderboard_mmlu_pro schema: question + options (list) + answer (letter)
             if "question" in doc and "options" in doc and "answer" in doc and "choices" not in doc:

@@ -107,17 +107,20 @@ class MinervaMathExtractor(LMEvalBenchmarkExtractor):
                 question = str(doc.get("problem", "")).strip()
                 # Try to get answer first (from processed docs), then fall back to solution
                 correct_answer = str(doc.get("answer", doc.get("solution", ""))).strip()
-                if question and correct_answer:
-                    metadata = {"label": "minerva_math"}
-                    # Create a negative answer - use generic wrong answer for math
-                    incorrect_answer = "The answer cannot be determined from the given information."
-                    return self._build_pair(
-                        question=f"Problem:\n{question}\n\nSolution:",
-                        correct=correct_answer,
-                        incorrect=incorrect_answer,
-                        metadata=metadata,
-                    )
-                return None
+                metadata = {"label": "minerva_math"}
+                # Always emit a pair so num_pairs == benchmark size; use placeholders
+                # when problem or answer is empty (rare in hendrycks_math but happens
+                # for ~2/704 docs after EleutherAI/hendrycks_math's process_docs).
+                if not question:
+                    question = "(no problem text)"
+                if not correct_answer:
+                    correct_answer = "(no canonical answer)"
+                return self._build_pair(
+                    question=f"Problem:\n{question}\n\nSolution:",
+                    correct=correct_answer,
+                    incorrect="The answer cannot be determined from the given information.",
+                    metadata=metadata,
+                )
 
             # Format 4: query/prompt + answer
             elif "query" in doc or "prompt" in doc:
