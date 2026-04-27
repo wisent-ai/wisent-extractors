@@ -194,9 +194,20 @@ class EusExamsExtractor(LMEvalBenchmarkExtractor):
                 )
                 return None
 
-            correct = choices[answer_idx]
-            incorrect_idx = (answer_idx + 1) % len(choices)
-            incorrect = choices[incorrect_idx]
+            correct = str(choices[answer_idx]).strip()
+            if not correct:
+                log.debug("Skipping doc — correct option text is empty", extra={"doc": doc})
+                return None
+            incorrect = ""
+            n = len(choices)
+            for offset in range(1, n):
+                cand = str(choices[(answer_idx + offset) % n]).strip()
+                if cand and cand != correct:
+                    incorrect = cand
+                    break
+            if not incorrect:
+                log.debug("Skipping doc — no non-empty distinct incorrect option", extra={"doc": doc})
+                return None
 
             metadata = {
                 "label": "eus_exams",
