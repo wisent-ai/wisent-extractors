@@ -5,6 +5,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # Required for OIDC; even when using a password the
+                        # newer pypi-publish action attempts OIDC introspection.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
