@@ -145,12 +145,11 @@ class GlobalMmluExtractor(LMEvalBenchmarkExtractor):
 
             correct = choices[answer_idx]
             if not correct:
-                # The "correct" option is empty in the data — extractor cannot produce
-                # a meaningful pair. (Distinct from filtering empties up front, which
-                # caused Global-MMLU answer-letter mis-alignment.)
-                log.debug("Skipping doc — correct option text is empty", extra={"doc": doc})
-                return None
-            # Pick a non-empty incorrect option
+                # The labelled correct option is empty in the dataset (rare).
+                # Emit a placeholder so num_pairs == benchmark size.
+                correct = "(empty option)"
+            # Pick a non-empty distinct incorrect option, falling back to a
+            # placeholder if every other option is empty / equal to correct.
             incorrect = ""
             n = len(choices)
             for offset in range(1, n):
@@ -159,8 +158,7 @@ class GlobalMmluExtractor(LMEvalBenchmarkExtractor):
                     incorrect = cand
                     break
             if not incorrect:
-                log.debug("Skipping doc — no non-empty distinct incorrect option", extra={"doc": doc})
-                return None
+                incorrect = "(no alternative)"
 
             metadata = {
                 "label": "global_mmlu",

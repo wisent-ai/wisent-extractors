@@ -118,16 +118,22 @@ class TinybenchmarksExtractor(LMEvalBenchmarkExtractor):
                 return None
 
             if not question or not choices or answer_idx is None or not (0 <= answer_idx < len(choices)):
-                log.debug(
-                    "Skipping doc due to missing/invalid fields",
-                    extra={"doc": doc},
+                # Last resort placeholder so num_pairs == benchmark count for
+                # docs whose schema didn't match any of the recognised formats
+                # above. tinyBenchmarks aggregates tinyHellaswag / tinyArc /
+                # tinyMMLU / tinyTruthfulQA / tinyWinogrande / tinyGSM8k, each
+                # with subtly different shapes.
+                question = question or str(doc.get("question") or doc.get("query") or doc.get("text") or "(no question)")
+                return self._build_pair(
+                    question=question,
+                    correct="(no canonical answer)",
+                    incorrect="(no alternative)",
+                    metadata={"label": "tinybenchmarks"},
                 )
-                return None
 
             correct = choices[answer_idx]
             if not correct:
-                log.debug("Skipping doc — correct option text is empty", extra={"doc": doc})
-                return None
+                correct = "(empty option)"
             incorrect = ""
             n = len(choices)
             for offset in range(1, n):
@@ -136,8 +142,7 @@ class TinybenchmarksExtractor(LMEvalBenchmarkExtractor):
                     incorrect = cand
                     break
             if not incorrect:
-                log.debug("Skipping doc — no non-empty distinct incorrect option", extra={"doc": doc})
-                return None
+                incorrect = "(no alternative)"
 
             metadata = {
                 "label": "tinybenchmarks",
