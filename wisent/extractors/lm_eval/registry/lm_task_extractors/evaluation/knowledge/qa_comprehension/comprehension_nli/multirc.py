@@ -96,12 +96,21 @@ class MultiRCExtractor(LMEvalBenchmarkExtractor):
             else:
                 label = None
 
-            if not paragraph or not question or not answer or label not in {0, 1}:
+            if label not in {0, 1}:
                 log.debug(
-                    "Skipping doc due to missing/invalid fields",
+                    "Skipping doc due to invalid label",
                     extra={"doc": doc},
                 )
                 return None
+            # Empty paragraph/question/answer happen for ~3 of 27243 super_glue
+            # multirc rows. The pair is still meaningful (label is yes/no), so
+            # use placeholders rather than dropping.
+            if not paragraph:
+                paragraph = "(no paragraph provided)"
+            if not question:
+                question = "(no question provided)"
+            if not answer:
+                answer = "(no answer provided)"
 
             prompt = f"{paragraph}\nQuestion: {question}\nAnswer: {answer}\nIs this answer correct?"
 
