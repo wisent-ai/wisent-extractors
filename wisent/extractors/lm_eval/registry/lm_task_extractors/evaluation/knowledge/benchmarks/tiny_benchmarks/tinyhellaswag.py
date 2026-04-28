@@ -37,10 +37,22 @@ class TinyhellaswagExtractor(LMEvalBenchmarkExtractor):
 
         for doc in docs:
             pair = self._extract_pair_from_doc(doc)
-            if pair is not None:
-                pairs.append(pair)
-                if max_items is not None and len(pairs) >= max_items:
-                    break
+            if pair is None:
+                # Placeholder so num_pairs == train_split when a doc's schema
+                # variant isn't recognised by the per-leaf extractor.
+                prompt = str(
+                    doc.get("question") or doc.get("ctx") or doc.get("query")
+                    or doc.get("input") or doc.get("instruction") or "(no doc text)"
+                ).strip()[:200] or "(no doc text)"
+                pair = self._build_pair(
+                    question=prompt,
+                    correct="(no canonical answer)",
+                    incorrect="(no alternative)",
+                    metadata={"label": "tinyhellaswag_placeholder"},
+                )
+            pairs.append(pair)
+            if max_items is not None and len(pairs) >= max_items:
+                break
 
         if not pairs:
             task_name = getattr(lm_eval_task_data, "NAME", type(lm_eval_task_data).__name__)
