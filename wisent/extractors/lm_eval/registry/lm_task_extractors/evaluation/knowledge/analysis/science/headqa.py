@@ -73,9 +73,13 @@ class HeadQAExtractor(LMEvalBenchmarkExtractor):
             qtext = str(doc.get("qtext", "")).strip()
             answers = doc.get("answers", [])
             answers = [answer["atext"] for answer in answers]
-            answer_idx = doc.get("ra") - 1
+            ra_val = doc.get("ra")
+            if ra_val is None:
+                log.debug("Skipping doc: ra is None", extra={"doc": doc})
+                return None
+            answer_idx = ra_val - 1
 
-            if not qtext or not answers or not answer_idx:
+            if not qtext or not answers or answer_idx < 0 or answer_idx >= len(answers):
                 log.debug(
                     "Skipping doc due to missing/invalid fields",
                     extra={"doc": doc},
