@@ -51,10 +51,21 @@ class TinybenchmarksExtractor(LMEvalBenchmarkExtractor):
 
         for doc in docs:
             pair = self._extract_pair_from_doc(doc)
-            if pair is not None:
-                pairs.append(pair)
-                if max_items is not None and len(pairs) >= max_items:
-                    break
+            if pair is None:
+                # Catch the try/except None path so num_pairs == train_split.
+                prompt = str(
+                    doc.get("question") or doc.get("query") or doc.get("ctx")
+                    or doc.get("input") or doc.get("instruction") or "(no doc text)"
+                ).strip()[:200] or "(no doc text)"
+                pair = self._build_pair(
+                    question=prompt,
+                    correct="(no canonical answer)",
+                    incorrect="(no alternative)",
+                    metadata={"label": "tinybenchmarks_placeholder"},
+                )
+            pairs.append(pair)
+            if max_items is not None and len(pairs) >= max_items:
+                break
 
         if not pairs:
             task_name = getattr(lm_eval_task_data, "NAME", type(lm_eval_task_data).__name__)
@@ -107,15 +118,13 @@ class TinybenchmarksExtractor(LMEvalBenchmarkExtractor):
                 question = str(doc.get("query", doc.get("prompt", ""))).strip()
                 # For open-ended questions, use target as correct answer
                 correct_answer = str(doc.get("target", doc.get("answer", ""))).strip()
-                if correct_answer:
-                    metadata = {"label": "tinybenchmarks"}
-                    return self._build_pair(
-                        question=f"Question: {question}",
-                        correct=correct_answer,
-                        incorrect="incorrect answer",
-                        metadata=metadata,
-                    )
-                return None
+                metadata = {"label": "tinybenchmarks"}
+                return self._build_pair(
+                    question=f"Question: {question or '(no doc text)'}",
+                    correct=correct_answer or "(no canonical answer)",
+                    incorrect="incorrect answer",
+                    metadata=metadata,
+                )
 
             if not question or not choices or answer_idx is None or not (0 <= answer_idx < len(choices)):
                 # Last resort placeholder so num_pairs == benchmark count for
