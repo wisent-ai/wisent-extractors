@@ -67,6 +67,12 @@ def try_load_from_storage(
     log = bind(_LOG, task=task_name)
     effective_limit = limit if limit else None
 
+    # Bypass all cache layers when WISENT_DISABLE_PAIR_CACHE is set so re-runs
+    # produce fresh extractions instead of returning poisoned (limit-5) caches.
+    import os as _os_storage_check
+    if _os_storage_check.environ.get("WISENT_DISABLE_PAIR_CACHE"):
+        return None
+
     # Local cache
     from wisent.core.reading.modules.utilities.data.cache import (
         load_pair_texts_cache,
