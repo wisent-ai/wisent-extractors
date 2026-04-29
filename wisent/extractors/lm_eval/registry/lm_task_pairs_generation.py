@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from typing import TYPE_CHECKING
 
-from wisent.extractors.lm_eval.lm_extractor_registry import get_extractor
+from wisent.extractors.lm_eval.lm_extractor_registry import get_extractor, is_rate_limit_exc
 from wisent.extractors.hf.atoms import HuggingFaceBenchmarkExtractor
 from wisent.core.utils.cli.cli_logger import setup_logger, bind
 
@@ -118,7 +118,9 @@ def _load_subtask_from_parent(task_name: str, loader, log):
         """
         try:
             parent_obj = loader.load_lm_eval_task(parent_name)
-        except Exception:
+        except Exception as _e:
+            if is_rate_limit_exc(_e):
+                raise
             return None, None
         if not isinstance(parent_obj, dict):
             return None, None
@@ -378,7 +380,9 @@ def build_contrastive_pairs(
 
     try:
         task_obj = loader.load_lm_eval_task(task_name)
-    except Exception:
+    except Exception as _e:
+        if is_rate_limit_exc(_e):
+            raise
         # Subtask not loadable directly — try loading parent group and finding subtask
         task_obj, _ = _load_subtask_from_parent(task_name, loader, log)
         if task_obj is None:

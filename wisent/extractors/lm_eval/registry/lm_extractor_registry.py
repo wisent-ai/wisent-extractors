@@ -17,7 +17,27 @@ from wisent.core.utils.infra_tools.errors import InvalidValueError, InvalidDataF
 __all__ = [
     "register_extractor",
     "get_extractor",
+    "is_rate_limit_exc",
 ]
+
+
+def is_rate_limit_exc(exc: BaseException) -> bool:
+    """True if exc OR any link in its __cause__/__context__ chain is a 429.
+
+    The bare 'except Exception:' blocks in lm_task_pairs_generation.py
+    convert HF 429s into NoDocsAvailableError, hiding the real cause from
+    string-matchers on the outer exception. Walk the chain so callers can
+    decide to re-raise instead of swallowing.
+    """
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        msg = str(cur).lower()
+        if "429" in msg or "too many requests" in msg or "rate limit" in msg:
+            return True
+        cur = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None)
+    return False
 
 LOG = logging.getLogger(__name__)
 
