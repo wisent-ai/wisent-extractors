@@ -1,6 +1,8 @@
 """Extractors for Okapi multilingual benchmarks (MMLU, HellaSwag, TruthfulQA)."""
 from __future__ import annotations
 
+import json
+import os
 import random
 from typing import Any
 
@@ -16,6 +18,66 @@ __all__ = [
 ]
 
 log = setup_logger(__name__)
+
+
+_OKAPI_LANGS = (
+    "ar bn ca da de es eu fr gu hi hr hu hy id it kn ml mr ne nl pt ro ru sk sr sv ta te uk vi zh"
+).split()
+
+
+def _hf_headers() -> dict:
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _fetch_okapi_json(repo: str, lang: str, split_filename: str) -> list[dict] | None:
+    """Fetch JSON data from HF CDN directly bypassing the rate-limited API.
+
+    URL pattern (works for jon-tow/okapi_mmlu and jon-tow/okapi_truthfulqa):
+        https://huggingface.co/datasets/{repo}/resolve/main/data/{lang}_{split}.json
+
+    Returns parsed JSON list or None on failure.
+    """
+    import requests
+
+    url = f"https://huggingface.co/datasets/{repo}/resolve/main/data/{lang}_{split_filename}.json"
+    try:
+        resp = requests.get(url, headers=_hf_headers(), timeout=120, allow_redirects=True)
+        if resp.status_code == 200:
+            return resp.json()
+        log.debug(f"Direct fetch {url} -> HTTP {resp.status_code}")
+    except Exception as exc:
+        log.debug(f"Direct fetch {url} failed: {exc}")
+    return None
+
+
+def _fetch_okapi_parquet(repo: str, lang: str, split: str) -> list[dict] | None:
+    """Fetch parquet data from HF auto-converted parquet endpoint bypassing the API.
+
+    URL pattern:
+        https://huggingface.co/datasets/{repo}/resolve/refs%2Fconvert%2Fparquet/{lang}/{split}/0000.parquet
+
+    Returns list of dicts or None on failure.
+    """
+    import io
+
+    import pyarrow.parquet as pq
+    import requests
+
+    url = (
+        f"https://huggingface.co/datasets/{repo}/resolve/refs%2Fconvert%2Fparquet/"
+        f"{lang}/{split}/0000.parquet"
+    )
+    try:
+        resp = requests.get(url, headers=_hf_headers(), timeout=180, allow_redirects=True)
+        if resp.status_code != 200:
+            log.debug(f"Direct parquet fetch {url} -> HTTP {resp.status_code}")
+            return None
+        table = pq.read_table(io.BytesIO(resp.content))
+        return table.to_pylist()
+    except Exception as exc:
+        log.debug(f"Direct parquet fetch {url} failed: {exc}")
+        return None
 
 
 class OkapiMMLUExtractor(HuggingFaceBenchmarkExtractor):
@@ -76,7 +138,33 @@ class OkapiMMLUExtractor(HuggingFaceBenchmarkExtractor):
             except Exception as e:
                 log.debug(f"Failed to load {ds_name}: {e}")
         if not docs:
-            log.error(f"Failed to load Okapi MMLU from any source")
+            # Fallback: direct CDN download bypassing rate-limited API
+            log.warning("load_dataset failed for all sources; falling back to direct CDN download")
+            languages = [config] if self.language else _OKAPI_LANGS
+            raw = []
+            for lang in languages:
+                items = _fetch_okapi_json("jon-tow/okapi_mmlu", lang, "test")
+                if items:
+                    log.info(f"Direct CDN fetched {len(items)} items for okapi_mmlu/{lang}")
+                    for it in items:
+                        # Normalize loader-script schema -> doc schema
+                        raw.append({
+                            "question": it.get("instruction", ""),
+                            "choices": [
+                                it.get("option_a", ""),
+                                it.get("option_b", ""),
+                                it.get("option_c", ""),
+                                it.get("option_d", ""),
+                            ],
+                            "answer": it.get("answer", "A"),
+                            "id": it.get("id", ""),
+                        })
+                if max_items is not None and len(raw) >= max_items:
+                    break
+            docs = raw
+
+        if not docs:
+            log.error("Failed to load Okapi MMLU from any source (including direct CDN)")
             return []
 
         for doc in docs:
@@ -201,7 +289,21 @@ class OkapiHellaswagExtractor(HuggingFaceBenchmarkExtractor):
             except Exception as e:
                 log.debug(f"Failed to load {ds_name}: {e}")
         if not docs:
-            log.error(f"Failed to load Okapi HellaSwag from any source")
+            # Fallback: direct CDN parquet download bypassing rate-limited API
+            log.warning("load_dataset failed for all sources; falling back to direct CDN parquet")
+            languages = [config] if self.language else _OKAPI_LANGS
+            raw = []
+            for lang in languages:
+                items = _fetch_okapi_parquet("jon-tow/okapi_hellaswag", lang, "validation")
+                if items:
+                    log.info(f"Direct CDN fetched {len(items)} items for okapi_hellaswag/{lang}")
+                    raw.extend(items)
+                if max_items is not None and len(raw) >= max_items:
+                    break
+            docs = raw
+
+        if not docs:
+            log.error("Failed to load Okapi HellaSwag from any source (including direct CDN)")
             return []
 
         for doc in docs:
@@ -266,6 +368,7 @@ Most likely completion:"""
         except Exception as exc:
             log.error(f"Error extracting Okapi HellaSwag pair: {exc}", exc_info=True)
             return None
+
 
 
 
