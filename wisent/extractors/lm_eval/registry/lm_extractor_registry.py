@@ -86,6 +86,11 @@ _HF_PRECEDENCE_KEYS = frozenset({
     "livecodebench",    # LM points to non-existent submodule
     # LM extractors that fail to load lm-eval task (returns NoneType / no docs); HF works
     "paws_x",
+    "doc",                          # LM extractor fails with NoneType
+    "lambada_multilingual_stablelm",  # LM extractor fails with NoneType
+    "math",                         # LM module has no MathExtractor class
+    "meddialog", "meddialog_qsumm", "meddialog_qsumm_perplexity",
+    "meddialog_raw_dialogues", "meddialog_raw_perplexity",  # subtask loader 'Entry' bug
 })
 
 
