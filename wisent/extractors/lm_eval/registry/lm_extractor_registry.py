@@ -91,24 +91,50 @@ _HF_PRECEDENCE_KEYS = frozenset({
     "math",                         # LM module has no MathExtractor class
     "meddialog", "meddialog_qsumm", "meddialog_qsumm_perplexity",
     "meddialog_raw_dialogues", "meddialog_raw_perplexity",  # subtask loader 'Entry' bug
+    "okapi_hellaswag_multilingual",
+    "okapi_mmlu_multilingual",
+    "okapi_truthfulqa_multilingual",  # LM extractor returns NoneType
+    "super_glue_t5_prompt",  # LM extractor returns NoneType
+    "supergpqa",             # LM extractor returns NoneType
+    "translation",           # LM expansion loads 40M+ docs across iwslt/wmt/etc, OOM
+    "wmt14_en_fr", "wmt14_fr_en",  # LM loads 40M docs OOM; HF samples
+    "wmt16_de_en", "wmt16_en_de", "wmt2016",  # same
 })
 
 
 def _build_combined_manifest() -> dict:
-    """Merge LM and HF manifests; LM wins by default, HF wins only for explicitly listed keys."""
-    lm_norm_keys = {(k or "").strip().lower().replace("-", "_") for k in _LM_MANIFEST}
-    combined = dict(_LM_MANIFEST)
+    """Merge LM and HF manifests on NORMALIZED keys (lowercase, dashes->underscores).
+
+    Critical: LM has multiple spellings of the same task key (e.g. 'wmt16-de-en',
+    'wmt16_de_en', 'wmt16_de-en' all referring to the same task).  Naively merging
+    on raw keys leaves stale LM entries in the dict which, after normalization in
+    _REGISTRY, can override HF entries that were supposed to win.  We therefore
+    normalize keys here so each task has exactly ONE entry in the combined manifest.
+
+    Precedence:
+      - HF wins if the (normalized) key is in HF_PRECEDENCE_KEYS
+      - Otherwise LM wins for any key it defines
+      - HF wins for any key only it defines
+    """
+    norm_combined: dict[str, str] = {}
+    # Insert LM first (will get overridden by HF if needed below)
+    for k, v in _LM_MANIFEST.items():
+        nk = (k or "").strip().lower().replace("-", "_")
+        if nk and nk not in norm_combined:
+            norm_combined[nk] = v
+    # Insert HF, overriding LM whenever the key is in HF_PRECEDENCE_KEYS
     for k, v in _HF_MANIFEST.items():
-        norm_k = (k or "").strip().lower().replace("-", "_")
-        # HF entry wins only if (a) the key is in HF-precedence allowlist, OR
-        # (b) the key has no LM extractor at all
-        if norm_k in _HF_PRECEDENCE_KEYS or norm_k not in lm_norm_keys:
-            combined[k] = v
-    return combined
+        nk = (k or "").strip().lower().replace("-", "_")
+        if not nk:
+            continue
+        if nk in _HF_PRECEDENCE_KEYS or nk not in norm_combined:
+            norm_combined[nk] = v
+    return norm_combined
 
 
 _COMBINED_MANIFEST = _build_combined_manifest()
-_REGISTRY: dict[str, Union[str, Type[LMEvalBenchmarkExtractor]]] = {(k or "").strip().lower().replace("-", "_"): v for k, v in _COMBINED_MANIFEST.items()}
+# _COMBINED_MANIFEST already has normalized keys, so the registry is just a copy.
+_REGISTRY: dict[str, Union[str, Type[LMEvalBenchmarkExtractor]]] = dict(_COMBINED_MANIFEST)
 
 
 def register_extractor(name: str, ref: Union[str, Type[LMEvalBenchmarkExtractor]]) -> None:
