@@ -446,7 +446,20 @@ def build_contrastive_pairs(
 
                 subtask_evaluator = getattr(subtask_extractor, 'evaluator_name', evaluator_name)
 
-                subtask_pairs = subtask_extractor.extract_contrastive_pairs(subtask, limit=pairs_per_task, train_ratio=train_ratio)
+                # HF extractors take only `limit` (no lm-eval task object, no train_ratio).
+                # LM extractors take (task, limit, train_ratio).  Without this branch a leaf
+                # that happens to resolve to an HF extractor would crash with
+                # "got multiple values for argument 'limit'" because the positional `subtask`
+                # would collide with the keyword `limit` in HF's signature.
+                if isinstance(subtask_extractor, HuggingFaceBenchmarkExtractor):
+                    # Make the HF extractor route to the correct leaf dataset by setting task_name.
+                    try:
+                        subtask_extractor.task_name = leaf_name
+                    except Exception:
+                        pass
+                    subtask_pairs = subtask_extractor.extract_contrastive_pairs(limit=pairs_per_task)
+                else:
+                    subtask_pairs = subtask_extractor.extract_contrastive_pairs(subtask, limit=pairs_per_task, train_ratio=train_ratio)
                 subtask_pairs = _add_evaluator_to_pairs(subtask_pairs, subtask_evaluator, subtask_name)
                 all_pairs.extend(subtask_pairs)
 

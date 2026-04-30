@@ -84,6 +84,8 @@ _HF_PRECEDENCE_KEYS = frozenset({
     # Misregistered LM entries that map to wrong dataset (flores -> AfroBenchCot mismatch)
     "flores",           # LM points to AfroBenchCotExtractor; HF FloresExtractor is canonical
     "livecodebench",    # LM points to non-existent submodule
+    # LM extractors that fail to load lm-eval task (returns NoneType / no docs); HF works
+    "paws_x",
 })
 
 
