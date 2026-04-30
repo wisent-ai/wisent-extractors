@@ -46,8 +46,61 @@ def _normalize_task_key(name: str) -> str:
     """Normalize task name for registry lookup: lowercase and replace dashes with underscores."""
     return (name or "").strip().lower().replace("-", "_")
 
-# Combine LM-eval and HuggingFace manifests (HF takes precedence for overlapping keys)
-_COMBINED_MANIFEST = {**_LM_MANIFEST, **_HF_MANIFEST}
+# Combine LM-eval and HuggingFace manifests.
+# By default, LM-eval extractors take precedence over HF for overlapping keys
+# because lm-eval has the canonical task definitions (correct splits, group expansion,
+# proper doc counts).  The HF manifest is used as a deliberate override only for tasks
+# that genuinely cannot be served by lm-eval (code execution sandboxes, multimodal,
+# missing optional packages, etc.).
+#
+# History: prior versions used `{**_LM_MANIFEST, **_HF_MANIFEST}` which made HF win
+# for any overlap.  This caused MASSIVE data loss for tasks like med_concepts_qa
+# (HF loaded medmcqa fallback ~6k pairs instead of lm-eval's 410k group-aggregated
+# pairs across 15 leaf subtasks).  See bug fix in v0.1.8.
+_HF_PRECEDENCE_KEYS = frozenset({
+    # ACP Bench Hard generative tasks - lm-eval requires tarski/lark/pddl/kstar-planner
+    "acp_app_gen", "acp_app_gen_with_pddl",
+    "acp_areach_gen", "acp_areach_gen_with_pddl",
+    "acp_bench_hard",
+    "acp_just_gen", "acp_just_gen_with_pddl",
+    "acp_land_gen", "acp_land_gen_with_pddl",
+    "acp_nexta_gen", "acp_nexta_gen_with_pddl",
+    "acp_prog_gen", "acp_prog_gen_with_pddl",
+    "acp_reach_gen", "acp_reach_gen_with_pddl",
+    "acp_val_gen", "acp_val_gen_with_pddl",
+    # Code-execution benchmarks - lm-eval has them but HF wrapper handles pair gen better
+    "humaneval", "humaneval_64_instruct", "humaneval_instruct",
+    "mercury", "recode", "codexglue", "concode", "conala",
+    # Multimodal / specialized
+    "hle", "mmmu",
+    # LM manifest entries that point to non-existent modules / classes -- HF must win
+    "basque_glue",      # LM module 'basque_glue' missing
+    "gsm8k_platinum",   # LM module 'gsm8k_platinum' missing
+    "math500",          # LM class 'Math500Extractor' missing in math module
+    "polymath_en_high", "polymath_en_medium",
+    "polymath_zh_high", "polymath_zh_medium",  # polymath module missing
+    "tmlu",             # LM module 'tmlu' missing
+    "tag",              # LM module 'tag' missing
+    # Misregistered LM entries that map to wrong dataset (flores -> AfroBenchCot mismatch)
+    "flores",           # LM points to AfroBenchCotExtractor; HF FloresExtractor is canonical
+    "livecodebench",    # LM points to non-existent submodule
+})
+
+
+def _build_combined_manifest() -> dict:
+    """Merge LM and HF manifests; LM wins by default, HF wins only for explicitly listed keys."""
+    lm_norm_keys = {(k or "").strip().lower().replace("-", "_") for k in _LM_MANIFEST}
+    combined = dict(_LM_MANIFEST)
+    for k, v in _HF_MANIFEST.items():
+        norm_k = (k or "").strip().lower().replace("-", "_")
+        # HF entry wins only if (a) the key is in HF-precedence allowlist, OR
+        # (b) the key has no LM extractor at all
+        if norm_k in _HF_PRECEDENCE_KEYS or norm_k not in lm_norm_keys:
+            combined[k] = v
+    return combined
+
+
+_COMBINED_MANIFEST = _build_combined_manifest()
 _REGISTRY: dict[str, Union[str, Type[LMEvalBenchmarkExtractor]]] = {(k or "").strip().lower().replace("-", "_"): v for k, v in _COMBINED_MANIFEST.items()}
 
 
