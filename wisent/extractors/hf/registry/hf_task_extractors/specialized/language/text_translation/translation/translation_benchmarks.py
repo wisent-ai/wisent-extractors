@@ -41,9 +41,11 @@ class TranslationExtractor(HuggingFaceBenchmarkExtractor):
             dataset_name: HuggingFace dataset name
         """
         super().__init__()
+        # Derive settings from task_name if available (e.g. "translation" -> defaults)
+        task_name = getattr(self, "task_name", None)
         self.source_lang = source_lang if source_lang is not None else "en"
         self.target_lang = target_lang if target_lang is not None else "de"
-        self.dataset_name = dataset_name if dataset_name is not None else "wmt14"
+        self.dataset_name = dataset_name if dataset_name is not None else "wmt/wmt14"
 
     def extract_contrastive_pairs(
         self,
@@ -157,6 +159,11 @@ class WMT14Extractor(HuggingFaceBenchmarkExtractor):
 
     evaluator_name = "generation"
 
+    # WMT14 HuggingFace dataset name (with org prefix) and available configs.
+    _DATASET_NAME = "wmt/wmt14"
+    # Configs follow target-source convention: fr-en, de-en, etc.
+    _KNOWN_CONFIGS = ("cs-en", "de-en", "fr-en", "hi-en", "ru-en")
+
     def __init__(self, lang_pair: Optional[str] = None):
         """
         Initialize WMT14 extractor.
@@ -165,10 +172,36 @@ class WMT14Extractor(HuggingFaceBenchmarkExtractor):
             lang_pair: Language pair (e.g., 'en-fr', 'fr-en', 'en-de', 'de-en')
         """
         super().__init__()
-        self.lang_pair = lang_pair if lang_pair is not None else "en-fr"
+        # Derive lang_pair from task_name if not explicitly provided.
+        # task_name is set by the registry, e.g. "wmt14_en_fr" -> "en-fr"
+        task_name = getattr(self, "task_name", None)
+        if lang_pair is not None:
+            self.lang_pair = lang_pair
+        elif task_name and "_" in task_name:
+            # e.g. "wmt14_en_fr" -> strip prefix -> "en_fr" -> "en-fr"
+            suffix = task_name.split("_", 1)[1] if task_name.startswith("wmt") else task_name
+            self.lang_pair = suffix.replace("_", "-")
+        else:
+            self.lang_pair = lang_pair if lang_pair is not None else "fr-en"
         parts = self.lang_pair.split("-")
         self.source_lang = parts[0] if len(parts) > 0 else "en"
         self.target_lang = parts[1] if len(parts) > 1 else "fr"
+
+    def _resolve_config(self) -> str | None:
+        """Find the correct HuggingFace config for the requested language pair.
+
+        WMT datasets use target-source convention (e.g. 'fr-en' not 'en-fr').
+        Try both orderings and match against known configs.
+        """
+        candidates = [
+            f"{self.source_lang}-{self.target_lang}",
+            f"{self.target_lang}-{self.source_lang}",
+        ]
+        for c in candidates:
+            if c in self._KNOWN_CONFIGS:
+                return c
+        # Fallback: return the first candidate (will be tried by load_dataset)
+        return candidates[0]
 
     def extract_contrastive_pairs(
         self,
@@ -178,27 +211,27 @@ class WMT14Extractor(HuggingFaceBenchmarkExtractor):
         max_items = self._normalize_limit(limit)
         pairs: list[ContrastivePair] = []
 
+        config = self._resolve_config()
         try:
-            # WMT14 config format is like "fr-en" for the dataset
-            config = f"{self.source_lang}-{self.target_lang}"
             docs = self.load_dataset(
-                dataset_name="wmt14",
+                dataset_name=self._DATASET_NAME,
                 dataset_config=config,
                 split="test",
                 limit=max_items,
             )
             log.info(f"Loaded {len(docs)} examples from WMT14 ({config})")
         except Exception as e:
-            # Try the reversed config
+            # Try the other config ordering
+            alt = f"{self.target_lang}-{self.source_lang}" if config == f"{self.source_lang}-{self.target_lang}" else f"{self.source_lang}-{self.target_lang}"
             try:
-                config = f"{self.target_lang}-{self.source_lang}"
                 docs = self.load_dataset(
-                    dataset_name="wmt14",
-                    dataset_config=config,
+                    dataset_name=self._DATASET_NAME,
+                    dataset_config=alt,
                     split="test",
                     limit=max_items,
                 )
-                log.info(f"Loaded {len(docs)} examples from WMT14 ({config})")
+                log.info(f"Loaded {len(docs)} examples from WMT14 ({alt})")
+                config = alt
             except Exception as e2:
                 log.error(f"Failed to load WMT14: {e2}")
                 return []

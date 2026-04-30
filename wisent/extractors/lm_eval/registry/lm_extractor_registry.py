@@ -94,7 +94,6 @@ _HF_PRECEDENCE_KEYS = frozenset({
     "okapi_hellaswag_multilingual",
     "okapi_mmlu_multilingual",
     "okapi_truthfulqa_multilingual",  # LM extractor returns NoneType
-    "super_glue_t5_prompt",  # LM extractor returns NoneType
     "supergpqa",             # LM extractor returns NoneType
     "translation",           # LM expansion loads 40M+ docs across iwslt/wmt/etc, OOM
     "wmt14_en_fr", "wmt14_fr_en",  # LM loads 40M docs OOM; HF samples

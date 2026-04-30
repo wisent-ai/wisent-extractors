@@ -38,7 +38,19 @@ class OkapiMMLUExtractor(HuggingFaceBenchmarkExtractor):
             language: Optional language filter (e.g., 'de', 'fr', 'es')
         """
         super().__init__()
-        self.language = language
+        # Derive language from task_name if not provided
+        # e.g. "okapi_mmlu_multilingual" -> None (use all), "okapi_mmlu_de" -> "de"
+        task_name = getattr(self, "task_name", None)
+        if language is not None:
+            self.language = language
+        elif task_name:
+            parts = task_name.split("_")
+            if len(parts) >= 3 and parts[-1] not in ("multilingual", "mmlu", "hellaswag", "truthfulqa"):
+                self.language = parts[-1]
+            else:
+                self.language = None
+        else:
+            self.language = None
 
     def extract_contrastive_pairs(
         self,
@@ -50,19 +62,21 @@ class OkapiMMLUExtractor(HuggingFaceBenchmarkExtractor):
 
         config = self.language if self.language else "de"
         docs = None
-        for ds_name in ["jon-tow/okapi_mmlu", "lighteval/okapi_mmlu"]:
+        for ds_name in ["jon-tow/okapi_mmlu", "lighteval/okapi_mmlu", "open-llm-leaderboard/okapi_mmlu"]:
             try:
                 docs = self.load_dataset(
                     dataset_name=ds_name,
                     dataset_config=config,
                     split="test",
                     limit=max_items,
+                    trust_remote_code=True,
                 )
                 log.info(f"Loaded {len(docs)} examples from {ds_name} ({config})")
                 break
             except Exception as e:
-                log.warning(f"Failed to load {ds_name}: {e}")
+                log.debug(f"Failed to load {ds_name}: {e}")
         if not docs:
+            log.error(f"Failed to load Okapi MMLU from any source")
             return []
 
         for doc in docs:
@@ -151,7 +165,17 @@ class OkapiHellaswagExtractor(HuggingFaceBenchmarkExtractor):
             language: Optional language filter
         """
         super().__init__()
-        self.language = language
+        task_name = getattr(self, "task_name", None)
+        if language is not None:
+            self.language = language
+        elif task_name:
+            parts = task_name.split("_")
+            if len(parts) >= 3 and parts[-1] not in ("multilingual", "hellaswag"):
+                self.language = parts[-1]
+            else:
+                self.language = None
+        else:
+            self.language = None
 
     def extract_contrastive_pairs(
         self,
@@ -161,17 +185,23 @@ class OkapiHellaswagExtractor(HuggingFaceBenchmarkExtractor):
         max_items = self._normalize_limit(limit)
         pairs: list[ContrastivePair] = []
 
-        try:
-            config = self.language if self.language else "de"
-            docs = self.load_dataset(
-                dataset_name="jon-tow/okapi_hellaswag",
-                dataset_config=config,
-                split="validation",
-                limit=max_items,
-            )
-            log.info(f"Loaded {len(docs)} examples from Okapi HellaSwag ({config})")
-        except Exception as e:
-            log.error(f"Failed to load Okapi HellaSwag: {e}")
+        config = self.language if self.language else "de"
+        docs = None
+        for ds_name in ["jon-tow/okapi_hellaswag", "lighteval/okapi_hellaswag"]:
+            try:
+                docs = self.load_dataset(
+                    dataset_name=ds_name,
+                    dataset_config=config,
+                    split="validation",
+                    limit=max_items,
+                    trust_remote_code=True,
+                )
+                log.info(f"Loaded {len(docs)} examples from {ds_name} ({config})")
+                break
+            except Exception as e:
+                log.debug(f"Failed to load {ds_name}: {e}")
+        if not docs:
+            log.error(f"Failed to load Okapi HellaSwag from any source")
             return []
 
         for doc in docs:

@@ -28,7 +28,17 @@ class OkapiTruthfulQAExtractor(HuggingFaceBenchmarkExtractor):
             language: Optional language filter
         """
         super().__init__()
-        self.language = language
+        task_name = getattr(self, "task_name", None)
+        if language is not None:
+            self.language = language
+        elif task_name:
+            parts = task_name.split("_")
+            if len(parts) >= 3 and parts[-1] not in ("multilingual", "truthfulqa"):
+                self.language = parts[-1]
+            else:
+                self.language = None
+        else:
+            self.language = None
 
     def extract_contrastive_pairs(
         self,
@@ -38,18 +48,24 @@ class OkapiTruthfulQAExtractor(HuggingFaceBenchmarkExtractor):
         max_items = self._normalize_limit(limit)
         pairs: list[ContrastivePair] = []
 
-        try:
-            # Original okapi_truthfulqa uses deprecated loading script
-            # Use alternative Spanish version as fallback
-            docs = self.load_dataset(
-                dataset_name="alvarobartt/truthfulqa-okapi-eval-es",
-                split="validation",
-                limit=max_items,
-            )
-            log.info(f"Loaded {len(docs)} examples from TruthfulQA Okapi (es)")
-            self._dataset_format = "mc_targets"  # Uses mc1_targets format
-        except Exception as e:
-            log.error(f"Failed to load Okapi TruthfulQA: {e}")
+        config = self.language if self.language else "es"
+        docs = None
+        for ds_name, cfg, split in [
+            ("jon-tow/okapi_truthfulqa", config, "validation"),
+            ("alvarobartt/truthfulqa-okapi-eval-es", None, "validation"),
+        ]:
+            try:
+                kwargs = dict(split=split, limit=max_items, trust_remote_code=True)
+                if cfg:
+                    kwargs["dataset_config"] = cfg
+                docs = self.load_dataset(dataset_name=ds_name, **kwargs)
+                log.info(f"Loaded {len(docs)} examples from {ds_name}")
+                self._dataset_format = "mc_targets"
+                break
+            except Exception as e:
+                log.debug(f"Failed to load {ds_name}: {e}")
+        if not docs:
+            log.error(f"Failed to load Okapi TruthfulQA from any source")
             return []
 
         for doc in docs:
