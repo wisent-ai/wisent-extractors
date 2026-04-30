@@ -77,11 +77,36 @@ class PileExtractor(LMEvalBenchmarkExtractor):
             }
             wanted = subset_map.get(task_name)
             from datasets import load_dataset
-            ds = load_dataset("NeelNanda/pile-10k", split="train")
-            if wanted:
-                docs = [r for r in ds if r["meta"].get("pile_set_name") == wanted]
-            else:
-                docs = list(ds)
+
+            # Try larger fallback first (monology/pile-uncopyrighted, ~270K docs).
+            # If that fails (rate limit / not accessible), fall back to the
+            # smaller NeelNanda/pile-10k dataset (~10K docs total).
+            ds = None
+            sample_cap = max_items if max_items else 50000
+            for fallback in ("monology/pile-uncopyrighted", "NeelNanda/pile-10k"):
+                try:
+                    iter_ds = load_dataset(fallback, split="train", streaming=True)
+                    collected: list[dict[str, Any]] = []
+                    for row in iter_ds:
+                        meta = row.get("meta") or {}
+                        set_name = meta.get("pile_set_name") if isinstance(meta, dict) else None
+                        if wanted is None or set_name == wanted:
+                            collected.append(row)
+                            if sample_cap is not None and len(collected) >= sample_cap:
+                                break
+                    log.info(
+                        "Loaded pile rows from fallback",
+                        extra={"fallback": fallback, "count": len(collected), "subset": wanted},
+                    )
+                    ds = collected
+                    if collected:
+                        break
+                except Exception as exc:
+                    log.warning(
+                        "Pile fallback failed",
+                        extra={"fallback": fallback, "error": str(exc)[:200]},
+                    )
+            docs = ds or []
             if max_items:
                 docs = docs[:max_items]
 
