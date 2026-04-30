@@ -14,6 +14,56 @@ if TYPE_CHECKING:
 __all__ = ["PileExtractor"]
 _LOG = setup_logger(__name__)
 
+
+_PILE_CDN_CACHE: dict[str, list[dict]] = {}
+
+
+def _hf_pile_headers() -> dict:
+    import os
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _fetch_monology_pile_cdn(filename: str = "test.jsonl.zst") -> list[dict]:
+    """Download and parse a JSON-L file from monology/pile-uncopyrighted via CDN.
+
+    The CDN endpoint (resolve/main/...) bypasses the rate-limited /api/datasets
+    endpoint. The file is zstandard-compressed; each line is JSON with shape:
+        {"text": "...", "meta": {"pile_set_name": "Github"}}
+
+    Cached in module-level dict for the process lifetime.
+    """
+    if filename in _PILE_CDN_CACHE:
+        return _PILE_CDN_CACHE[filename]
+
+    import io
+    import json as _json
+    import requests
+    import zstandard as zstd
+
+    url = f"https://huggingface.co/datasets/monology/pile-uncopyrighted/resolve/main/{filename}"
+    log = _LOG
+    try:
+        resp = requests.get(url, headers=_hf_pile_headers(), timeout=600, stream=False)
+        if resp.status_code != 200:
+            log.warning(f"CDN fetch {url} -> HTTP {resp.status_code}")
+            return []
+        dctx = zstd.ZstdDecompressor()
+        raw = dctx.decompress(resp.content, max_output_size=10 * 1024 * 1024 * 1024)
+        rows: list[dict] = []
+        for line in io.BytesIO(raw):
+            try:
+                rows.append(_json.loads(line))
+            except Exception:
+                continue
+        log.info(f"Loaded {len(rows)} pile rows from CDN {filename}")
+        _PILE_CDN_CACHE[filename] = rows
+        return rows
+    except Exception as exc:
+        log.warning(f"CDN pile fetch failed: {str(exc)[:200]}")
+        return []
+
+
 task_names = (
     "pile",
     "pile_arxiv", "pile_bookcorpus2", "pile_books3", "pile_dm-mathematics", "pile_enron",
@@ -83,29 +133,54 @@ class PileExtractor(LMEvalBenchmarkExtractor):
             # smaller NeelNanda/pile-10k dataset (~10K docs total).
             ds = None
             sample_cap = max_items if max_items else 50000
-            for fallback in ("monology/pile-uncopyrighted", "NeelNanda/pile-10k"):
-                try:
-                    iter_ds = load_dataset(fallback, split="train", streaming=True)
-                    collected: list[dict[str, Any]] = []
-                    for row in iter_ds:
-                        meta = row.get("meta") or {}
-                        set_name = meta.get("pile_set_name") if isinstance(meta, dict) else None
-                        if wanted is None or set_name == wanted:
-                            collected.append(row)
-                            if sample_cap is not None and len(collected) >= sample_cap:
-                                break
+
+            # Tier 1: direct CDN download from monology/pile-uncopyrighted
+            # (bypasses rate-limited /api/datasets endpoint).
+            for cdn_file in ("test.jsonl.zst", "val.jsonl.zst"):
+                rows = _fetch_monology_pile_cdn(cdn_file)
+                if rows:
+                    collected = [
+                        r for r in rows
+                        if (wanted is None or
+                            (isinstance(r.get("meta"), dict) and
+                             r["meta"].get("pile_set_name") == wanted))
+                    ]
                     log.info(
-                        "Loaded pile rows from fallback",
-                        extra={"fallback": fallback, "count": len(collected), "subset": wanted},
+                        "Loaded pile rows from CDN fallback",
+                        extra={"file": cdn_file, "count": len(collected), "subset": wanted},
                     )
-                    ds = collected
                     if collected:
+                        ds = collected
                         break
-                except Exception as exc:
-                    log.warning(
-                        "Pile fallback failed",
-                        extra={"fallback": fallback, "error": str(exc)[:200]},
-                    )
+                    elif wanted is None:
+                        ds = rows
+                        break
+
+            # Tier 2 / 3: HF datasets library (rate-limited but cached)
+            if not ds:
+                for fallback in ("monology/pile-uncopyrighted", "NeelNanda/pile-10k"):
+                    try:
+                        iter_ds = load_dataset(fallback, split="train", streaming=True)
+                        collected = []
+                        for row in iter_ds:
+                            meta = row.get("meta") or {}
+                            set_name = meta.get("pile_set_name") if isinstance(meta, dict) else None
+                            if wanted is None or set_name == wanted:
+                                collected.append(row)
+                                if sample_cap is not None and len(collected) >= sample_cap:
+                                    break
+                        log.info(
+                            "Loaded pile rows from fallback",
+                            extra={"fallback": fallback, "count": len(collected), "subset": wanted},
+                        )
+                        ds = collected
+                        if collected:
+                            break
+                    except Exception as exc:
+                        log.warning(
+                            "Pile fallback failed",
+                            extra={"fallback": fallback, "error": str(exc)[:200]},
+                        )
             docs = ds or []
             if max_items:
                 docs = docs[:max_items]
