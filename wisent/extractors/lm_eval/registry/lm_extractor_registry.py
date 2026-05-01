@@ -132,8 +132,28 @@ def _build_combined_manifest() -> dict:
 
 
 _COMBINED_MANIFEST = _build_combined_manifest()
-# _COMBINED_MANIFEST already has normalized keys, so the registry is just a copy.
-_REGISTRY: dict[str, Union[str, Type[LMEvalBenchmarkExtractor]]] = dict(_COMBINED_MANIFEST)
+
+# Post-hoc overrides: keys where the combined manifest has the WRONG extractor.
+# These take precedence over both LM and HF manifests.
+_REGISTRY_OVERRIDES: dict[str, str] = {
+    # lm-eval "multiple_*" tasks are BIG-bench multiple_choice groups,
+    # NOT MultiPL-E coding tasks.  The HF manifest incorrectly maps them
+    # to MultiplEExtractor (which loads nuprl/MultiPL-E, yielding ~161 pairs
+    # instead of thousands).  Override to BigBenchExtractor.
+    "multiple_cs": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+    "multiple_js": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+    "multiple_lua": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+    "multiple_pl": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+    "multiple_r": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+    "multiple_rb": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+    "multiple_sh": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+    "multiple_ts": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+}
+
+# _COMBINED_MANIFEST already has normalized keys; apply overrides, then copy.
+_manifest_with_overrides = dict(_COMBINED_MANIFEST)
+_manifest_with_overrides.update(_REGISTRY_OVERRIDES)
+_REGISTRY: dict[str, Union[str, Type[LMEvalBenchmarkExtractor]]] = _manifest_with_overrides
 
 
 def register_extractor(name: str, ref: Union[str, Type[LMEvalBenchmarkExtractor]]) -> None:
