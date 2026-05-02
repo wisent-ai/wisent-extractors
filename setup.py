@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="wisent-extractors",
-    version="0.1.16",
+    version="0.1.17",
     author="Lukasz Bartoszcze and the Wisent Team",
     author_email="lukasz.bartoszcze@wisent.ai",
     description="Benchmark extractors for lm-eval-harness and HuggingFace tasks, used by the wisent package family",

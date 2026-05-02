@@ -141,13 +141,19 @@ _REGISTRY_OVERRIDES: dict[str, str] = {
     # to MultiplEExtractor (which loads nuprl/MultiPL-E, yielding ~161 pairs
     # instead of thousands).  Override to BigBenchExtractor.
     "multiple_cs": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+    "multiple_d": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+    "multiple_go": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
     "multiple_js": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
     "multiple_lua": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
     "multiple_pl": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
     "multiple_r": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
     "multiple_rb": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+    "multiple_rs": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
     "multiple_sh": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
     "multiple_ts": "wisent.extractors.lm_eval.lm_task_extractors.bigbench:BigBenchExtractor",
+    # lm-eval "asdiv_cot_llama" is a math reasoning task, not a coding task.
+    # The HF manifest incorrectly maps it to MATH500Extractor.
+    "asdiv_cot_llama": "wisent.extractors.lm_eval.registry.lm_task_extractors.asdiv:ASDivExtractor",
 }
 
 # _COMBINED_MANIFEST already has normalized keys; apply overrides, then copy.
