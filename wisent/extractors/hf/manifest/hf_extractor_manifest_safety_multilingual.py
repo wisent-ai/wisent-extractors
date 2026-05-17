@@ -155,6 +155,7 @@ EXTRACTORS_SAFETY_MULTILINGUAL: dict[str, str] = {
 
     # Planning/Reasoning benchmarks (NOT lm-eval)
     "planbench": f"{base_import}planbench:PlanBenchExtractor",
+    "reclor": f"{base_import}reclor:ReclorExtractor",
     "plan_bench": f"{base_import}planbench:PlanBenchExtractor",
     "planningbench": f"{base_import}planbench:PlanBenchExtractor",
 
