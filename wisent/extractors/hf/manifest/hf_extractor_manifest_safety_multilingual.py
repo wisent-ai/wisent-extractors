@@ -159,6 +159,11 @@ EXTRACTORS_SAFETY_MULTILINGUAL: dict[str, str] = {
     "qasc": f"{base_import}qasc:QascExtractor",
     "quartz": f"{base_import}quartz:QuartzExtractor",
     "quail": f"{base_import}quail:QuailExtractor",
+    "quoref": f"{base_import}quoref:QuorefExtractor",
+    "scitail": f"{base_import}scitail:ScitailExtractor",
+    "webglm": f"{base_import}webglm:WebglmExtractor",
+    "openbookqa_fact": f"{base_import}openbookqa_fact:OpenbookqaFactExtractor",
+    "musr": f"{base_import}musr:MusrExtractor",
     "plan_bench": f"{base_import}planbench:PlanBenchExtractor",
     "planningbench": f"{base_import}planbench:PlanBenchExtractor",
 
