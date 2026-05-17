@@ -158,6 +158,7 @@ EXTRACTORS_SAFETY_MULTILINGUAL: dict[str, str] = {
     "reclor": f"{base_import}reclor:ReclorExtractor",
     "qasc": f"{base_import}qasc:QascExtractor",
     "quartz": f"{base_import}quartz:QuartzExtractor",
+    "quail": f"{base_import}quail:QuailExtractor",
     "plan_bench": f"{base_import}planbench:PlanBenchExtractor",
     "planningbench": f"{base_import}planbench:PlanBenchExtractor",
 
