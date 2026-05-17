@@ -154,6 +154,9 @@ _REGISTRY_OVERRIDES: dict[str, str] = {
     # lm-eval "asdiv_cot_llama" is a math reasoning task, not a coding task.
     # The HF manifest incorrectly maps it to MATH500Extractor.
     "asdiv_cot_llama": "wisent.extractors.lm_eval.registry.lm_task_extractors.asdiv:ASDivExtractor",
+    "alghafa_copa_ar": "wisent.extractors.lm_eval.registry.lm_task_extractors.copa:COPAExtractor",  # lm-eval task copa_ar; COPAExtractor handles query/sol1/sol2 schema
+    "alghafa_piqa_ar": "wisent.extractors.lm_eval.registry.lm_task_extractors.piqa:PIQAExtractor",  # lm-eval task piqa_ar; PIQAExtractor handles goal/sol1/sol2/label
+    "socialiqa": "wisent.extractors.lm_eval.registry.lm_task_extractors.siqa:SIQAExtractor",  # lm-eval task social_iqa; mirrors canonical siqa resolution
 }
 
 # _COMBINED_MANIFEST already has normalized keys; apply overrides, then copy.

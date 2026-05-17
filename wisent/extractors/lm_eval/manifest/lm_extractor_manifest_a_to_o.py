@@ -252,6 +252,7 @@ LM_EXTRACTORS_A_TO_O: dict[str, str] = {
     "mts_dialog": f"{base_import}mts_dialog:MtsDialogExtractor",
     "multiblimp": f"{base_import}multiblimp:MultiblimpExtractor",
     "noreval": f"{base_import}noreval:NorevalExtractor",
+    "noreval_ask_gec": f"{base_import}noreval_gen:NorevalGenerationExtractor",
     "okapi_arc_multilingual": f"{base_import}okapi_arc_multilingual:OkapiArcMultilingualExtractor",
     "okapi_hellaswag_multilingual": f"{base_import}okapi_hellaswag_multilingual:OkapiHellaswagMultilingualExtractor",
     "okapi_mmlu_multilingual": f"{base_import}okapi_mmlu_multilingual:OkapiMmluMultilingualExtractor",

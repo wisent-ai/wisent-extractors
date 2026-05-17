@@ -217,6 +217,7 @@ LM_EXTRACTORS_P_TO_Z: dict[str, str] = {
     "tinyArc": f"{base_import}tinyarc:TinyarcExtractor",
     "tinygsm8k": f"{base_import}tinygsm8k:Tinygsm8kExtractor",
     "tinyGSM8k": f"{base_import}tinygsm8k:Tinygsm8kExtractor",
+    "tinygsm": f"{base_import}tinygsm8k:Tinygsm8kExtractor",
     "tinyhellaswag": f"{base_import}tinyhellaswag:TinyhellaswagExtractor",
     "tinyHellaswag": f"{base_import}tinyhellaswag:TinyhellaswagExtractor",
     "tinymmlu": f"{base_import}tinymmlu:TinymmluExtractor",

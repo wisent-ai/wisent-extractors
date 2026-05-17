@@ -383,8 +383,23 @@ def build_contrastive_pairs(
     except Exception as _e:
         if is_rate_limit_exc(_e):
             raise
+        log.warning(f"load_lm_eval_task({task_name!r}) raised {type(_e).__name__}: {_e}", exc_info=_e)
         # Subtask not loadable directly — try loading parent group and finding subtask
         task_obj, _ = _load_subtask_from_parent(task_name, loader, log)
+        # advanced_ai_risk_<variant>_<subtopic> uses dashes after <variant> in lm-eval.
+        # If the parent-group fallback failed, retry with the dash-converted name
+        # directly. Confirmed live on 2026-05-07: many advanced_ai_risk_human_*
+        # jobs failed with "task: NoneType" because the parent-group leaf-match
+        # didn't pick them up.
+        if task_obj is None:
+            import re as _re
+            _m = _re.match(r"^(advanced_ai_risk_(?:fewshot|human|lm))_(.+)$", task_name)
+            if _m:
+                _dash = f"{_m.group(1)}-{_m.group(2).replace('_','-')}"
+                try:
+                    task_obj = loader.load_lm_eval_task(_dash)
+                except Exception:
+                    task_obj = None
         if task_obj is None:
             # Last resort: some extractors (storycloze, multipl_e) can produce pairs
             # without an lm-eval task object. Try the extractor directly.

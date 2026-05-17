@@ -103,8 +103,14 @@ class DarijaBenchExtractor(LMEvalBenchmarkExtractor):
                 user_msg = doc["messages"][0].get("content", "")
                 assistant_msg = doc["messages"][1].get("content", "").strip()
 
-                # Translation tasks (no '-' choices in user message) — use assistant_msg as direct answer
-                if user_msg and assistant_msg and "-" not in user_msg.split('\n', 1)[-1]:
+                # Sentiment uses a '-'-prefixed choice list (>=2 such lines, e.g.
+                # "-سلبي\n-ايجابي\n-ماكينش إحساس"); translation/summarization are
+                # free-form (no choice lines, though article text may contain a
+                # stray '-'). Route on choice-line count, not on the mere presence
+                # of a '-' character — otherwise summarization articles containing
+                # any '-' are wrongly sent to choice-parsing and yield no pairs.
+                choice_lines = [ln for ln in user_msg.split('\n') if ln.strip().startswith('-')]
+                if user_msg and assistant_msg and len(choice_lines) < 2:
                     words = assistant_msg.split()
                     incorrect = " ".join(reversed(words)) if len(words) > 1 else "incorrect"
                     return self._build_pair(
