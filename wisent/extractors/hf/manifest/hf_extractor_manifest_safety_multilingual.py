@@ -167,6 +167,7 @@ EXTRACTORS_SAFETY_MULTILINGUAL: dict[str, str] = {
     "mocha": f"{base_import}mocha:MochaExtractor",
     "wildbench": f"{base_import}wildbench:WildbenchExtractor",
     "pubmed_entailment": f"{base_import}pubmed_entailment:PubmedEntailmentExtractor",
+    "socialiqa": f"{base_import}social_iqa:SocialIqaHFExtractor",
     "plan_bench": f"{base_import}planbench:PlanBenchExtractor",
     "planningbench": f"{base_import}planbench:PlanBenchExtractor",
 
