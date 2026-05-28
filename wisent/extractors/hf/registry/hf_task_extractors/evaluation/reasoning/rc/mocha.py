@@ -65,7 +65,12 @@ class MochaExtractor(HuggingFaceBenchmarkExtractor):
         max_items = self._normalize_limit(limit)
 
         log.info(f"Loading anthonychen/mocha (limit={max_items})")
-        dataset = load_dataset("anthonychen/mocha", split="validation")
+        # anthonychen/mocha ships only a loader script (mocha.py), which modern
+        # `datasets` refuses ("Dataset scripts are no longer supported"). Load
+        # the HF-generated parquet export of the identical data instead.
+        dataset = load_dataset(
+            "anthonychen/mocha", revision="refs/convert/parquet", split="validation"
+        )
 
         pairs: list[ContrastivePair] = []
         for doc in dataset:
