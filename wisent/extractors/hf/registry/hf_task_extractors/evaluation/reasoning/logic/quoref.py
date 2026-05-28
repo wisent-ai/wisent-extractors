@@ -74,7 +74,12 @@ class QuorefExtractor(HuggingFaceBenchmarkExtractor):
         max_items = self._normalize_limit(limit)
 
         log.info(f"Loading allenai/quoref (limit={max_items})")
-        dataset = load_dataset("allenai/quoref", split="validation")
+        # allenai/quoref ships only a loader script (quoref.py), which modern
+        # `datasets` refuses ("Dataset scripts are no longer supported"). Load
+        # the HF-generated parquet export of the identical data instead.
+        dataset = load_dataset(
+            "allenai/quoref", revision="refs/convert/parquet", split="validation"
+        )
 
         pairs: list[ContrastivePair] = []
         for doc in dataset:
