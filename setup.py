@@ -2,7 +2,7 @@ from setuptools import setup, find_namespace_packages
 
 setup(
     name="wisent-extractors",
-    version="0.1.27",
+    version="0.1.62",
     author="Lukasz Bartoszcze and the Wisent Team",
     author_email="lukasz.bartoszcze@wisent.ai",
     description="Benchmark extractors for lm-eval-harness and HuggingFace tasks, used by the wisent package family",
@@ -15,6 +15,7 @@ setup(
         "huggingface_hub>=0.20",
         "lm_eval>=0.4.0",
         "requests>=2.0",
+        "pandas>=2.0",
         "sympy>=1.12",
         "latex2sympy2_extended>=1.0.0",
         "pyyaml",

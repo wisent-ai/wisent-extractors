@@ -44,7 +44,15 @@ class MediqaQa2019Extractor(LMEvalBenchmarkExtractor):
         log = bind(_LOG, task=getattr(lm_eval_task_data, "NAME", "unknown"))
 
         max_items = self._normalize_limit(limit)
-        docs = self.load_docs(lm_eval_task_data, max_items, preferred_doc=preferred_doc, train_ratio=train_ratio)
+        if lm_eval_task_data is None:
+            docs = self._load_bigbio_parquet_docs(max_items)
+        else:
+            docs = self.load_docs(
+                lm_eval_task_data,
+                max_items,
+                preferred_doc=preferred_doc,
+                train_ratio=train_ratio,
+            )
 
         pairs: list[ContrastivePair] = []
 
@@ -63,6 +71,28 @@ class MediqaQa2019Extractor(LMEvalBenchmarkExtractor):
 
         return pairs
 
+    def _load_bigbio_parquet_docs(self, max_items: int | None) -> list[dict[str, Any]]:
+        import io
+        import pandas as pd
+        import requests
+
+        docs: list[dict[str, Any]] = []
+        splits = ("test", "validation", "train_live_qa_med", "train_alexa")
+        for split in splits:
+            url = (
+                "https://huggingface.co/datasets/bigbio/mediqa_qa/resolve/"
+                f"refs%2Fconvert%2Fparquet/mediqa_qa_bigbio_qa/{split}/0000.parquet"
+            )
+            resp = requests.get(url, timeout=60)
+            if resp.status_code != 200:
+                continue
+            frame = pd.read_parquet(io.BytesIO(resp.content))
+            for row in frame.to_dict(orient="records"):
+                docs.append(row)
+                if max_items is not None and len(docs) >= max_items:
+                    return docs
+        return docs
+
     def _extract_pair_from_doc(self, doc: dict[str, Any]) -> ContrastivePair | None:
         """
         Convert a single Mediqa Qa2019 doc into a ContrastivePair, if possible.
@@ -73,6 +103,32 @@ class MediqaQa2019Extractor(LMEvalBenchmarkExtractor):
         log = bind(_LOG, doc_id=doc.get("id", "unknown"))
 
         try:
+            if "question" in doc and "answer" in doc:
+                question = str(doc.get("question", "")).strip()
+                raw_answers = doc.get("answer")
+                if isinstance(raw_answers, str):
+                    correct_answer = raw_answers.strip()
+                elif raw_answers is None:
+                    correct_answer = ""
+                else:
+                    try:
+                        answers = list(raw_answers)
+                    except TypeError:
+                        answers = [raw_answers]
+                    correct_answer = str(answers[0]).strip() if answers else ""
+                if not question or not correct_answer:
+                    return None
+                incorrect_answer = (
+                    "I'm not able to provide specific medical information. "
+                    "Please consult with a healthcare professional."
+                )
+                return self._build_pair(
+                    question=f"Question: {question}",
+                    correct=correct_answer,
+                    incorrect=incorrect_answer,
+                    metadata={"label": "mediqa_qa2019"},
+                )
+
             # Mediqa QA 2019 format: doc["QUESTION"] contains question and answer
             if "QUESTION" in doc:
                 question_obj = doc["QUESTION"]

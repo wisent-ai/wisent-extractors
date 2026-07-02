@@ -5,7 +5,7 @@ from typing import Any, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
 from wisent.core.utils.cli.cli_logger import setup_logger
-from wisent.core.utils.infra_tools.errors import FileLoadError, DatasetLoadError
+from wisent.core.utils.infra_tools.errors import DatasetLoadError, FileLoadError
 
 _log = setup_logger(__name__)
 
@@ -110,7 +110,6 @@ class HuggingFaceBenchmarkExtractor(ABC):
         return None
 
     @classmethod
-    @classmethod
     def load_all_splits(
         cls,
         dataset_name: str,
@@ -167,10 +166,7 @@ class HuggingFaceBenchmarkExtractor(ABC):
         try:
             from datasets import load_dataset
         except Exception as exc:
-            raise FileLoadError(
-                file_path="datasets library",
-                cause=exc
-            )
+            raise FileLoadError(file_path="datasets library", cause=exc)
 
         load_kwargs = {
             "split": split,
@@ -179,8 +175,7 @@ class HuggingFaceBenchmarkExtractor(ABC):
         config_arg = dataset_config if dataset_config else None
 
         try:
-            dataset = load_dataset(
-                dataset_name, config_arg, **load_kwargs)
+            dataset = load_dataset(dataset_name, config_arg, **load_kwargs)
         except ValueError as exc:
             if "Feature type 'List' not found" in str(exc) or "Type mismatch" in str(exc):
                 import datasets.features.features as features_module

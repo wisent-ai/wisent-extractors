@@ -3,8 +3,6 @@ from __future__ import annotations
 import ast
 from typing import Any
 
-from datasets import load_dataset
-
 from wisent.core.primitives.contrastive_pairs.core.pair import ContrastivePair
 from wisent.core.primitives.contrastive_pairs.core.io.response import (
     NegativeResponse,
@@ -22,6 +20,10 @@ task_names = ("musr",)
 # Three subtask splits of TAUR-Lab/MuSR; matches lm-eval leaderboard_musr's
 # subtask list (leaderboard_musr_{murder_mysteries,object_placements,team_allocation}).
 _MUSR_SPLITS = ("murder_mysteries", "object_placements", "team_allocation")
+_MUSR_PARQUET = (
+    "https://huggingface.co/datasets/TAUR-Lab/MuSR/resolve/"
+    "refs%2Fconvert%2Fparquet/default/{split}/0000.parquet"
+)
 
 # DOC_TO_TEXT verbatim from lm-eval lm_eval/tasks/leaderboard/musr/utils.py.
 _DOC_TO_TEXT = "{narrative}\n\n{question}\n\n{choices}\nAnswer:"
@@ -68,9 +70,8 @@ class MusrExtractor(HuggingFaceBenchmarkExtractor):
 
         pairs: list[ContrastivePair] = []
         for split in _MUSR_SPLITS:
-            log.info(f"Loading TAUR-Lab/MuSR split={split}")
-            dataset = load_dataset("TAUR-Lab/MuSR", split=split)
-            for doc in dataset:
+            log.info(f"Loading TAUR-Lab/MuSR parquet split={split}")
+            for doc in self._load_split(split):
                 pair = self._extract_pair_from_doc(doc)
                 if pair is not None:
                     pairs.append(pair)
@@ -81,6 +82,21 @@ class MusrExtractor(HuggingFaceBenchmarkExtractor):
             log.warning("No valid MuSR pairs extracted")
 
         return pairs
+
+    @staticmethod
+    def _load_split(split: str) -> list[dict[str, Any]]:
+        """Read the HF auto-parquet shard directly.
+
+        `datasets.load_dataset("TAUR-Lab/MuSR", split=...)` performs a HEAD on
+        README.md and is currently rate-limiting long-running extraction jobs
+        before they can start. The datasets-server exposes stable auto-parquet
+        shards for the same splits, so read those files directly.
+        """
+        import pandas as pd
+
+        return [dict(row) for _, row in pd.read_parquet(
+            _MUSR_PARQUET.format(split=split)
+        ).iterrows()]
 
     def _extract_pair_from_doc(self, doc: dict[str, Any]) -> ContrastivePair | None:
         """

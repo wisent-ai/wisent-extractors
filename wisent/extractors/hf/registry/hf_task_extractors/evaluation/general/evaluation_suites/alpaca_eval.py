@@ -64,13 +64,16 @@ class AlpacaEvalExtractor(HuggingFaceBenchmarkExtractor):
         return pairs
 
     def _load_alpaca_eval_docs(self, max_items: int | None) -> list[dict]:
-        """Load AlpacaEval examples from the HuggingFace dataset."""
-        return self.load_dataset(
-            dataset_name="tatsu-lab/alpaca_eval",
-            split="eval",
-            limit=max_items,
-            trust_remote_code=True,
-        )
+        """Load AlpacaEval examples without executing the deprecated dataset script."""
+        import requests
+
+        url = "https://huggingface.co/datasets/tatsu-lab/alpaca_eval/resolve/main/alpaca_eval.json"
+        response = requests.get(url, timeout=60)
+        response.raise_for_status()
+        docs = response.json()
+        if max_items is not None:
+            docs = docs[:max_items]
+        return [dict(doc) for doc in docs]
 
     def _extract_pair_from_doc(self, doc: dict[str, Any]) -> ContrastivePair | None:
         """
