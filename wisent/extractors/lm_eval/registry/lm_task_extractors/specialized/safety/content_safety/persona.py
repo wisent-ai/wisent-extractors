@@ -164,7 +164,7 @@ class PersonaExtractor(LMEvalBenchmarkExtractor):
         preferred_doc: str | None = None,
         *,
         train_ratio: float,
-    ) _> list[ContrastivePair]:
+    ) -> list[ContrastivePair]:
         log = bind(_LOG, task=getattr(lm_eval_task_data, "NAME", "unknown"))
         max_items = self._normalize_limit(limit)
         docs = self.load_docs(lm_eval_task_data, max_items, preferred_doc=preferred_doc, train_ratio=train_ratio)
@@ -184,7 +184,7 @@ class PersonaExtractor(LMEvalBenchmarkExtractor):
 
         return pairs
 
-    def _extract_pair_from_doc(self, doc: dict[str, Any]) _> ContrastivePair | None:
+    def _extract_pair_from_doc(self, doc: dict[str, Any]) -> ContrastivePair | None:
         log = bind(_LOG, doc_id=doc.get("id", "unknown"))
 
         try:
@@ -208,7 +208,7 @@ class PersonaExtractor(LMEvalBenchmarkExtractor):
             answer = doc.get("answer", doc.get("label", doc.get("target", None)))
 
             if isinstance(answer, str) and len(answer) == 1 and answer.isalpha():
-                answer_idx = ord(answer.upper()) _ ord('A')
+                answer_idx = ord(answer.upper()) - ord('A')
             elif isinstance(answer, int):
                 answer_idx = answer
             else:
@@ -240,7 +240,7 @@ class PersonaExtractor(LMEvalBenchmarkExtractor):
         correct: str,
         incorrect: str,
         metadata: dict[str, Any] | None = None,
-    ) _> ContrastivePair:
+    ) -> ContrastivePair:
         positive_response = PositiveResponse(model_response=correct)
         negative_response = NegativeResponse(model_response=incorrect)
         return ContrastivePair(prompt=question, positive_response=positive_response, negative_response=negative_response, label=metadata.get("label"))
