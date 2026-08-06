@@ -148,16 +148,194 @@ jobs:
             echo "Declared version matches the $change change."
           fi
 
-      - name: Refuse a baseline nobody can install
-        if: github.ref == 'refs/heads/main'
+      - name: Refuse a baseline that misstates where it came from
         run: |
           set -euo pipefail
-          # released-surface.json must describe a *published* version. If it names one
-          # PyPI does not have, the baseline was hand-edited and every later comparison
-          # is measured against something nobody can install.
+          # RUNNER_TEMP only exists on a runner, hence the fallback, which is also what
+          # lets this body be extracted and run locally.
+          : "${RUNNER_TEMP:=$(mktemp -d)}"
+
+          # released-surface.json must say which artifact it was recovered from, and the
+          # marker -- the first whitespace-delimited token of "source" -- is that claim.
+          # scripts/baseline.py writes it, so the two files agree through a grammar rather
+          # than through prose that drifts. `first`, never a bare subscript.
+          #
+          # This replaces the narrower check that used to live here, which asked only
+          # whether the baseline's *version* is on PyPI, read the answer from `curl -sSf`'s
+          # exit status with no positive control, and ran on main alone -- so a pull
+          # request could merge a baseline recovered from nothing at all. It is one step,
+          # not two, because the artifact check subsumes the version check: an artifact
+          # PyPI serves for that version cannot exist if the version does not.
+          marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
           released="$(jq -r .version released-surface.json)"
-          if ! curl -sSf "https://pypi.org/pypi/wisent-extractors/$released/json" >/dev/null; then
-            echo "::error::released-surface.json names $released, which is not on PyPI."
+          # An empty or null marker must never reach the comparisons below: it would be
+          # compared against an equally empty expectation and pass vacuously, which is the
+          # one outcome a frozen file exists to prevent.
+          case "${marker:-}" in
+            ''|null)
+              echo "::error::released-surface.json yielded no marker. The file is malformed" \
+                "or .source is missing, so nothing here can be checked."
+              false ;;
+          esac
+          tier="${marker%%:*}"
+          artifact="${marker#*:}"
+          # `${marker#*:}` gives back the whole marker when there is no colon at all, so
+          # this catches both a marker with an empty tail and a bare word that names no
+          # artifact -- `head` without a sha, or prose that lost its grammar.
+          case "$artifact" in
+            ''|"$marker")
+              echo "::error::marker '$marker' names no artifact: the grammar is" \
+                "<tier>:<artifact>, and everything after the first space is prose. Run" \
+                "python3 scripts/baseline.py --write."
+              false ;;
+          esac
+          echo "marker: $marker"
+
+          # The distribution name comes from the manifest, the same place the declared
+          # version above comes from, never from a literal repeated here where it could
+          # drift away from what setup.py publishes. PyPI answers *generically* about a
+          # project it has never heard of, so an empty or mangled name would be asked
+          # about and its answer read as proven absence: assert the input first.
+          project="$(awk -F'"' '/name=/{print $2; exit}' setup.py)"
+          case "${project:-}" in
+            ''|*[!a-zA-Z0-9._-]*)
+              echo "::error::setup.py yielded no usable distribution name" \
+                "('${project:-<nothing>}'), so any question asked of PyPI would be about" \
+                "the wrong subject and its answer would mean nothing."
+              false ;;
+          esac
+
+          # Three states, never two: named, stated-absent, unproven. An index that says it
+          # has no such project and an index that could not be reached are different facts
+          # that a client's exit status collapses into one, and the wrong reading is always
+          # the passing one. So absence is read from the answer's CONTENT, and presence is
+          # believed only when the document names the subject back -- an error page, a
+          # rate-limit page or a 403 fails all of it and reads `unproven`, which is not the
+          # same as fine. The `|| true` is safe only because every branch below demands
+          # specific content and the fallthrough refuses.
+          fetch() {
+            curl -s -H "User-Agent: wisent-extractors version-check" \
+              "https://pypi.org/pypi/$1/json" > "$2" || true
+          }
+          state() {
+            if jq -e --arg want "$2" \
+                 '((.info.name // "") | ascii_downcase | gsub("[-_.]+"; "-"))
+                  == ($want | ascii_downcase | gsub("[-_.]+"; "-"))' "$1" >/dev/null 2>&1; then
+              echo named
+            elif jq -e '(.message // "") | ascii_downcase | contains("not found")' \
+                 "$1" >/dev/null 2>&1; then
+              echo absent
+            else
+              echo unproven
+            fi
+          }
+
+          fetch "$project" "$RUNNER_TEMP/subject.json"
+          # Fail-closed twin, pointed at the positive branch. Content-reading already
+          # covers transport silence, which makes this look redundant -- it is not,
+          # because `unproven` is also what a broken expression produces: a jq path that
+          # can no longer recognise a published project refuses forever while PyPI answers
+          # perfectly, and the operator blames the registry. It runs through the same
+          # function, the same URL shape and the same credential as the subject -- namely
+          # none, since PyPI serves this anonymously -- so it is a control and not a
+          # second subject, and `pip` is a project PyPI certainly serves.
+          fetch pip "$RUNNER_TEMP/control.json"
+          control="$(state "$RUNNER_TEMP/control.json" pip)"
+          if [ "$control" != named ]; then
+            echo "::error::this step read '$control' for pip, which PyPI definitely serves," \
+              "so it cannot recognise a published project and its verdict about" \
+              "$project is meaningless. Fix the check; do not read its answer as absence."
             false
           fi
-          echo "Baseline $released exists on PyPI."
+          subject="$(state "$RUNNER_TEMP/subject.json" "$project")"
+          echo "PyPI on $project: $subject"
+
+          case "$tier" in
+            pypi-sdist)
+              # Forward: the marker claims a published sdist, so PyPI must serve that exact
+              # filename for the baselined version. This is also what makes the version
+              # *discriminate* the build rather than merely exist -- the filename carries
+              # the number, so the answer names the artifact somebody installed.
+              if [ "$subject" != named ]; then
+                echo "::error::the marker claims a published sdist, but PyPI's answer about" \
+                  "$project read '$subject', so the baseline's provenance is unproven."
+                false
+              fi
+              served="$(jq -r --arg want "$released" \
+                '[(.releases[$want] // [])[] | select(.packagetype == "sdist") | .filename]
+                 | join(" ")' "$RUNNER_TEMP/subject.json")"
+              case " $served " in
+                *" $artifact "*) ;;
+                *)
+                  echo "::error::released-surface.json says it was recovered from" \
+                    "$artifact, but PyPI serves '${served:-no sdist at all}' for $released." \
+                    "Either the baseline was hand-edited or that release was withdrawn;" \
+                    "every later comparison is measured against something nobody can" \
+                    "install. Run python3 scripts/baseline.py --write."
+                  false ;;
+              esac
+              echo "PyPI serves $artifact for $released, as the marker claims."
+
+              # Being honest about the tier is not being on the best one. A newer sdist can
+              # appear after the baseline was frozen, leaving the marker truthful and the
+              # baseline stale while the gate measures a superseded artifact. Whole marker,
+              # not the prefix: comparing prefixes would pass a baseline naming the right
+              # kind of artifact and the wrong one. Only the marker is checked here -- the
+              # committed surface stays the only surface any decision sees, because
+              # recomputing both sides at check time is the one shape that structurally
+              # cannot refuse.
+              best="$(jq -r '[(.releases[.info.version] // .urls // [])[]
+                              | select(.packagetype == "sdist") | .filename] | first // ""' \
+                     "$RUNNER_TEMP/subject.json")"
+              case "${best:-}" in
+                ''|null)
+                  echo "::error::this step could not read the newest published sdist out of" \
+                    "PyPI's answer, so whether the baseline is stale is unproven. That is" \
+                    "not the same as up to date."
+                  false ;;
+              esac
+              if [ "pypi-sdist:$best" != "$marker" ]; then
+                echo "::error::the baseline is '$marker' but 'pypi-sdist:$best' is published" \
+                  "now, so the gate is measuring a superseded artifact. Run" \
+                  "python3 scripts/baseline.py --write."
+                false
+              fi
+              echo "Baseline $released at '$marker' is still the best reachable artifact."
+              ;;
+            pypi-wheel|npm-tarball|crates-io|stado|gh-release|git-archive|head)
+              # Every one of these is a real marker in the fleet grammar and none of them is
+              # a baseline this repository can honestly hold: scripts/baseline.py produces
+              # pypi-sdist only, because setup.py publishes a PyPI distribution and PyPI
+              # serves an sdist for it. A wheel, a tag or a sha here would measure this
+              # package against a lower tier than the one that exists, and a foreign
+              # registry would measure it against another product entirely. The reverse
+              # assertion is quoted rather than assumed, and it is quoted in three states,
+              # so the message says which of them the operator is actually looking at.
+              case "$subject" in
+                named)
+                  echo "::error::marker $marker claims the baseline came from something" \
+                    "other than a published sdist, but PyPI names $project, so an sdist" \
+                    "tier is available and this one is lower. Run" \
+                    "python3 scripts/baseline.py --write." ;;
+                absent)
+                  echo "::error::marker $marker claims a tier below pypi-sdist and PyPI" \
+                    "states it serves no $project. This repository has published sdists" \
+                    "throughout its history, so a person must establish that the" \
+                    "distribution was withdrawn before a lower tier is accepted; this gate" \
+                    "cannot check a tier its generator never writes." ;;
+                *)
+                  echo "::error::marker $marker claims a tier below pypi-sdist, and PyPI" \
+                    "did not answer about $project, so the absence such a tier claims is" \
+                    "unproven -- which is not the same as absence." ;;
+              esac
+              false
+              ;;
+            *)
+              echo "::error::unknown baseline marker: $marker. scripts/baseline.py emits" \
+                "pypi-sdist; the fleet grammar also knows pypi-wheel, npm-tarball," \
+                "crates-io, stado, gh-release, git-archive and head. Anything else means" \
+                "the file was hand-edited, and a person decides rather than this gate" \
+                "accepting a baseline it cannot check."
+              false
+              ;;
+          esac

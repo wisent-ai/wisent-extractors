@@ -1,6 +1,6 @@
 {
   "version": "0.1.62",
-  "source": "sdist published on PyPI",
+  "source": "pypi-sdist:wisent_extractors-0.1.62.tar.gz unpacked and read by scripts/surface.py",
   "surface": [
     "lm_eval:20_newsgroups",
     "lm_eval:AraDiCE_ArabicMMLU_egy",
