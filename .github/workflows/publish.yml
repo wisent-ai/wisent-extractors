@@ -15,10 +15,100 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-      - name: Build
+      - name: Refuse a release whose tag disagrees with the manifest
+        # A PyPI version is immutable: once a distribution is uploaded, that number can
+        # never be overwritten, renamed or reused. So a Release named v1.2.3 that ships a
+        # tree declaring something else is a mistake with no repair afterwards — only
+        # prose in the release notes. brama learned this the expensive way: v0.2.9 through
+        # v0.2.13 were cut from trees already declaring 0.3.0, and five releases published
+        # a breaking change under patch-looking names. This refuses before `python -m
+        # build` produces the first byte anybody could upload, which is the last moment
+        # where the mistake costs nothing but a retag.
+        #
+        # The version is read through `scripts/baseline.py --declared-version`, the helper
+        # this repository already ships for exactly this question: it parses
+        # setup(version=...) with ast and refuses on a missing, non-literal or empty value
+        # instead of returning an empty string that would compare equal to a mangled tag.
+        # No second parser is written here. setup.py IS the manifest — pyproject.toml
+        # carries only [build-system] and [tool.ruff], with no [project] table — so there
+        # is no other declaration for it to disagree with.
+        #
+        # The coordinate comes from github.event.release.tag_name: on a `release` trigger
+        # that is the tag the Release actually carries, and it is the thing PyPI's upload
+        # will be remembered by, not GITHUB_REF_NAME. It arrives through env rather than
+        # being interpolated into the script body, because a tag name is text somebody
+        # else chose.
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
+          set -euo pipefail
+          declared="$(python3 scripts/baseline.py --declared-version)"
+          # The helper already refuses rather than printing nothing, so an empty answer
+          # here means it did not run at all; comparing the tag against "v" would pass for
+          # a tag literally named v, which is the one way this gate could wave through the
+          # case it exists to catch.
+          test -n "$declared" || {
+            echo "::error::scripts/baseline.py --declared-version printed nothing, so there" \
+              "is no manifest version to compare the release tag against. Refusing rather" \
+              "than publishing an unchecked coordinate."
+            false
+          }
+          # Exact `v<version>`, not a prefix stripped in case. Every release this
+          # repository has ever cut is named that way — v0.1.4 through v0.1.24, nine of
+          # nine, identically in `gh release list` and in `git ls-remote --tags origin` —
+          # so a tag named `0.1.25` is a change of naming scheme, and before an immutable
+          # upload is where a change of naming scheme should be noticed. What revokes
+          # this: a deliberate move to unprefixed tags, which must edit this line rather
+          # than work around it.
+          if [ "$RELEASE_TAG" != "v$declared" ]; then
+            echo "::error::release tag $RELEASE_TAG does not name v$declared, the version" \
+              "setup.py declares. Publishing now would put a distribution containing" \
+              "$declared on PyPI under the release $RELEASE_TAG. A PyPI version is" \
+              "immutable — it cannot be overwritten, renamed or reused once uploaded — so" \
+              "this is the last moment at which the mistake is free. Either the tag names a" \
+              "version this tree does not contain, or the bump was never committed."
+            false
+          fi
+          echo "release tag $RELEASE_TAG matches the $declared that setup.py declares."
+
+      - name: Build
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          # `python -m build` ADDS to dist/ and never clears it, and the publish step below
+          # uploads whatever the directory holds — so any leftover is published as though
+          # this run had built it, under this release's name, immutably. A GitHub-hosted
+          # runner starts on an empty workspace and actions/checkout runs `git clean -ffdx`
+          # (which reaches dist/ even though .gitignore lists it), so today nothing is
+          # left; neither of those is a property of this workflow, and the fleet already
+          # runs self-hosted runners that reuse a workspace. One line makes it a property
+          # of this workflow.
+          rm -rf dist
           python -m pip install --upgrade pip build
           python -m build
+          # And what gets uploaded must be what the gate above vouched for. The number is
+          # taken from the tag, not carried over from the step that read the manifest, so
+          # no single wrong value can satisfy both comparisons; the check sits in the step
+          # that produced the files rather than in one that could later be reordered or
+          # made conditional away from them.
+          version="${RELEASE_TAG#v}"
+          test -n "$(ls -A dist)" || {
+            echo "::error::python -m build produced no distributions, so the publish step" \
+              "would upload nothing while reporting success."
+            false
+          }
+          ls dist
+          for built in dist/*; do
+            case "${built##*/}" in
+              *"$version"*) ;;
+              *)
+                echo "::error::dist/ holds ${built##*/}, whose name does not carry" \
+                  "$version. The publish step uploads the whole directory, so this file" \
+                  "would reach PyPI as part of $RELEASE_TAG."
+                false ;;
+            esac
+          done
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
