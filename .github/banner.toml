@@ -1,0 +1,15 @@
+[automation]
+managed = true
+source_fingerprint = "8e52865f2a7d13ca"
+category = "benchmark"
+
+[banner]
+title = "Extract benchmark signals consistently."
+description = "Shared benchmark extractors split from the Wisent monorepo."
+product = "Wisent"
+url = "wisent.ai"
+theme = "dark"
+layout = "benchmark-left"
+art_seed = "wisent-extractors"
+width = 1584
+height = 396
