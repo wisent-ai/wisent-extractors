@@ -1,13 +1,13 @@
 [automation]
 managed = true
-source_fingerprint = "8e52865f2a7d13ca"
+source_fingerprint = "2f012a72c69bbe48"
 category = "benchmark"
 
 [banner]
 title = "Extract benchmark signals consistently."
 description = "Shared benchmark extractors split from the Wisent monorepo."
 product = "Wisent"
-url = "wisent.ai"
+url = "wisent.com"
 theme = "dark"
 layout = "benchmark-left"
 art_seed = "wisent-extractors"
