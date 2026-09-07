@@ -25,7 +25,7 @@ jobs:
         # build` produces the first byte anybody could upload, which is the last moment
         # where the mistake costs nothing but a retag.
         #
-        # The version is read through `scripts/baseline.py --declared-version`, the helper
+        # The version is read through `tests/versioning_baseline.py --declared-version`, which
         # this repository already ships for exactly this question: it parses
         # setup(version=...) with ast and refuses on a missing, non-literal or empty value
         # instead of returning an empty string that would compare equal to a mangled tag.
@@ -42,13 +42,13 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          declared="$(python3 scripts/baseline.py --declared-version)"
+          declared="$(python3 tests/versioning_baseline.py --declared-version)"
           # The helper already refuses rather than printing nothing, so an empty answer
           # here means it did not run at all; comparing the tag against "v" would pass for
           # a tag literally named v, which is the one way this gate could wave through the
           # case it exists to catch.
           test -n "$declared" || {
-            echo "::error::scripts/baseline.py --declared-version printed nothing, so there" \
+            echo "::error::tests/versioning_baseline.py --declared-version printed nothing, so there" \
               "is no manifest version to compare the release tag against. Refusing rather" \
               "than publishing an unchecked coordinate."
             false

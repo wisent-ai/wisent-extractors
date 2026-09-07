@@ -67,7 +67,7 @@ jobs:
         # so this stays cheap and cannot be broken by an unrelated dependency. A
         # module that does not parse fails the step rather than silently shrinking
         # the surface.
-        run: python3 scripts/surface.py > "$RUNNER_TEMP/candidate.json"
+        run: python3 tests/versioning_surface.py > "$RUNNER_TEMP/candidate.json"
 
       - name: Compare against the released contract
         run: |
@@ -157,7 +157,7 @@ jobs:
 
           # released-surface.json must say which artifact it was recovered from, and the
           # marker -- the first whitespace-delimited token of "source" -- is that claim.
-          # scripts/baseline.py writes it, so the two files agree through a grammar rather
+          # tests/versioning_baseline.py writes it, so the two files agree through a grammar rather
           # than through prose that drifts. `first`, never a bare subscript.
           #
           # This replaces the narrower check that used to live here, which asked only
@@ -186,7 +186,7 @@ jobs:
             ''|"$marker")
               echo "::error::marker '$marker' names no artifact: the grammar is" \
                 "<tier>:<artifact>, and everything after the first space is prose. Run" \
-                "python3 scripts/baseline.py --write."
+                "python3 tests/versioning_baseline.py --write."
               false ;;
           esac
           echo "marker: $marker"
@@ -271,7 +271,7 @@ jobs:
                     "$artifact, but PyPI serves '${served:-no sdist at all}' for $released." \
                     "Either the baseline was hand-edited or that release was withdrawn;" \
                     "every later comparison is measured against something nobody can" \
-                    "install. Run python3 scripts/baseline.py --write."
+                    "install. Run python3 tests/versioning_baseline.py --write."
                   false ;;
               esac
               echo "PyPI serves $artifact for $released, as the marker claims."
@@ -297,14 +297,14 @@ jobs:
               if [ "pypi-sdist:$best" != "$marker" ]; then
                 echo "::error::the baseline is '$marker' but 'pypi-sdist:$best' is published" \
                   "now, so the gate is measuring a superseded artifact. Run" \
-                  "python3 scripts/baseline.py --write."
+                  "python3 tests/versioning_baseline.py --write."
                 false
               fi
               echo "Baseline $released at '$marker' is still the best reachable artifact."
               ;;
             pypi-wheel|npm-tarball|crates-io|stado|gh-release|git-archive|head)
               # Every one of these is a real marker in the fleet grammar and none of them is
-              # a baseline this repository can honestly hold: scripts/baseline.py produces
+              # a baseline this repository can honestly hold: tests/versioning_baseline.py produces
               # pypi-sdist only, because setup.py publishes a PyPI distribution and PyPI
               # serves an sdist for it. A wheel, a tag or a sha here would measure this
               # package against a lower tier than the one that exists, and a foreign
@@ -316,7 +316,7 @@ jobs:
                   echo "::error::marker $marker claims the baseline came from something" \
                     "other than a published sdist, but PyPI names $project, so an sdist" \
                     "tier is available and this one is lower. Run" \
-                    "python3 scripts/baseline.py --write." ;;
+                    "python3 tests/versioning_baseline.py --write." ;;
                 absent)
                   echo "::error::marker $marker claims a tier below pypi-sdist and PyPI" \
                     "states it serves no $project. This repository has published sdists" \
@@ -331,7 +331,7 @@ jobs:
               false
               ;;
             *)
-              echo "::error::unknown baseline marker: $marker. scripts/baseline.py emits" \
+              echo "::error::unknown baseline marker: $marker. tests/versioning_baseline.py emits" \
                 "pypi-sdist; the fleet grammar also knows pypi-wheel, npm-tarball," \
                 "crates-io, stado, gh-release, git-archive and head. Anything else means" \
                 "the file was hand-edited, and a person decides rather than this gate" \
