@@ -1,4 +1,4 @@
 """Auto-grouped modules."""
-from .commonsense import CommonsenseExtractor
+from .commonsense_modules.commonsense import CommonsenseExtractor
 
 __all__ = ["CommonsenseExtractor"]

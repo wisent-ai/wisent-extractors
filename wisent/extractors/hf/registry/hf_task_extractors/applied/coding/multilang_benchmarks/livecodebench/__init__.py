@@ -1,4 +1,4 @@
 """Auto-grouped modules."""
-from .livecodebench import LivecodebenchExtractor
+from .livecodebench_modules.livecodebench import LivecodebenchExtractor
 
 __all__ = ["LivecodebenchExtractor"]

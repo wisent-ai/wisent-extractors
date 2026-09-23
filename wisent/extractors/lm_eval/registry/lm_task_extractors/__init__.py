@@ -48,7 +48,7 @@ _sys.modules["wisent.extractors.lm_eval.lm_task_extractors.agieval"] = _agieval_
 # Also register under the registry path
 _sys.modules["wisent.extractors.lm_eval.registry.lm_task_extractors.agieval"] = _agieval_mod
 
-from wisent.extractors.lm_eval.lm_task_extractors.evaluation.knowledge.analysis.text_classification.twenty_newsgroups import TwentyNewsgroupsExtractor
+from wisent.extractors.lm_eval.lm_task_extractors.evaluation.knowledge.analysis.text_classification.twenty_to_yahoo.twenty_newsgroups import TwentyNewsgroupsExtractor
 
 # Create module alias for twenty_newsgroups extractor
 _twenty_newsgroups_mod = _types.ModuleType("twenty_newsgroups")

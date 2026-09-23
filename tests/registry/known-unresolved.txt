@@ -1,0 +1,3 @@
+lm_eval:livecodebench  the livecodebench package imports get_negative_example_livecodebench from wisent.extractors.hf.hf_task_extractors.livecodebench, a module that does not exist
+hf:livecodebench  the livecodebench package imports get_negative_example_livecodebench from wisent.extractors.hf.hf_task_extractors.livecodebench, a module that does not exist
+lm_eval:medical  the manifest names MedicalExtractor, which the medical module does not define

@@ -20,4 +20,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
       - name: Smoke test
-        run: python smoke_test.py
+        run: python tests/smoke_test.py
+      - name: Every registered extractor resolves
+        run: python tests/registry/resolution.py --known tests/registry/known-unresolved.txt
