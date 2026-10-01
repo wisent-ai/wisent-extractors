@@ -1,12 +1,18 @@
 name: Version check
 
-# Refuse a change whose declared version disagrees with what it did to the public
-# contract. The contract of this package is which benchmark tasks it can extract, so
-# adding one is a capability and removing one breaks whoever extracted it yesterday.
+# Refuse a change whose declared version disagrees with what the change did
+# to this distribution's public surface.
 #
-# The rule itself lives in one place for the whole fleet and is not copied here:
-# https://github.com/lbartoszcze/AutoVersion. This workflow supplies only the two
-# things this repository alone knows: its surface, and the version it declares.
+# Stado owns the gate. `stado release version-gate app-surface` reads the
+# surface statically from the sources named below, never by importing the
+# package: every string key of the `*_TASKS` and `*EXTRACTORS` manifest
+# literals under wisent/extractors, prefixed with the family directory they
+# sit in (`lm_eval:`, `hf:`), because what a caller depends on is which
+# benchmarks the package extracts. setup.py's `version=` is the declared
+# version. `app-baseline --stdout` reads the same sources from the newest
+# version tag origin serves, which is the tree the PyPI release was built
+# from; `decide` is the shared rule and `conformance` proves it against the
+# shared fixtures before any verdict is trusted.
 
 on:
   pull_request:
@@ -17,325 +23,49 @@ on:
 permissions:
   contents: read
 
+env:
+  SOURCES: --setup-py setup.py --python-manifests wisent/extractors --manifest-suffix _TASKS --manifest-suffix EXTRACTORS
+
 jobs:
   version-check:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, stado]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install the shared rule
-        # Into a virtual environment, never the system interpreter. ubuntu-latest now
-        # resolves to an Ubuntu whose system python3 carries the externally-managed
-        # marker, so a bare `pip install` dies with
-        # error: externally-managed-environment before any check runs — a gate that can
-        # never pass, worth exactly what one that can never fail is worth. The venv
-        # sidesteps the marker without --break-system-packages, and putting its bin on
-        # GITHUB_PATH leaves every later step's `autoversion` call unchanged. This
-        # repository's own scripts stay on the system python3, which is right: they
-        # import the stdlib and nothing else.
-        run: |
-          : "${RUNNER_TEMP:=$(mktemp -d)}"
-          : "${GITHUB_PATH:=$(mktemp)}"
-          python3 -m venv "$RUNNER_TEMP/rule"
-          "$RUNNER_TEMP/rule/bin/python" -m pip install --quiet \
-            "git+https://github.com/lbartoszcze/AutoVersion@v0.1.0"
-          echo "$RUNNER_TEMP/rule/bin" >> "$GITHUB_PATH"
-          # GITHUB_PATH is read by the runner after this step exits, so it does nothing
-          # for the assertions below. Without this prepend they resolve whatever
-          # `autoversion` PATH already held: command-not-found on a clean runner, so
-          # permanently red — or a stranger's binary, which passes and vouches for a
-          # rule nobody consulted. Measured both ways. This is the same prepend
-          # GITHUB_PATH gives the later steps, applied to this one too.
-          export PATH="$RUNNER_TEMP/rule/bin:$PATH"
-          # `--help` is satisfied by ANY executable that exits zero, so establish WHICH
-          # autoversion is about to answer before believing it. Should the prepend above
-          # ever be lost in a later edit, this refuses and names the stranger, instead of
-          # going green on a stranger's answer where nobody would look.
-          resolved="$(command -v autoversion || true)"
-          case "$resolved" in
-            "$RUNNER_TEMP/rule/bin/"*) ;;
-            *)
-              echo "::error::autoversion resolves to '${resolved:-nothing}', outside the" \
-                "venv this step just built, so nothing it answers would be the rule."
-              false
-              ;;
-          esac
-          autoversion --help > /dev/null || { echo "::error::the rule does not answer"; false; }
+      # actions/checkout fetches one commit and no tags; the baseline is read
+      # from the released tag's blobs. Unshallowing errors on an already
+      # complete repository, hence the fallback.
+      - name: Make tags and history visible
+        run: git fetch --force --tags --unshallow || git fetch --force --tags
 
-      - name: Read the public surface
-        # No package dependencies: the surface is read from the manifests with ast,
-        # so this stays cheap and cannot be broken by an unrelated dependency. A
-        # module that does not parse fails the step rather than silently shrinking
-        # the surface.
-        run: python3 tests/versioning_surface.py > "$RUNNER_TEMP/candidate.json"
+      - name: Prove the versioning rule against the shared fixtures
+        run: stado release version-gate conformance
 
-      - name: Compare against the released contract
+      - name: Compare the surface against the released tag
         run: |
           set -euo pipefail
-          released="$(jq -r .version released-surface.json)"
-          declared="$(awk -F'"' '/version=/{print $2; exit}' setup.py)"
-          echo "released: $released"
+          stado release version-gate app-baseline --root . $SOURCES --stdout > "$RUNNER_TEMP/released.json"
+          stado release version-gate app-surface --root . $SOURCES > "$RUNNER_TEMP/candidate.json"
+          released="$(jq -r .version "$RUNNER_TEMP/released.json")"
+          declared="$(jq -r .version "$RUNNER_TEMP/candidate.json")"
+          echo "released: $released ($(jq -r '.source | split(" ") | first' "$RUNNER_TEMP/released.json"))"
           echo "declared: $declared"
-
-          # Before any verdict is consumed, make this step prove that what answers to
-          # `autoversion` is the rule and that this gate CAN refuse. A gate that has never
-          # refused is decoration, and the liveness assertion in the install step does not
-          # close that: an impostor answering a constant `internal` passes `--help` and then
-          # passes every step here, because when declared equals released `internal` IS the
-          # passing branch — a fabricated verdict leaving no trace. Three known answers
-          # close it, and no constant satisfies all three: a name removed reads `breaking`,
-          # a name added reads `additive`, the released surface against itself reads
-          # `internal`. `breaking` is by construction not `internal`, which is exactly the
-          # condition refused on below, so the refusal branch is proven reachable rather
-          # than assumed. Built from the committed baseline, not from a synthetic pair, so
-          # the same step also shows the frozen file is the one reaching the decision. And
-          # it lives in the SAME step as the decide it certifies, so it covers the binary
-          # that actually answers here; in its own step it could be reordered or made
-          # conditional and quietly stop covering anything. The removal probe keeps a
-          # non-empty candidate deliberately — the rule rejects an empty surface outright,
-          # so an empty one is not a usable known answer.
-          jq '.surface = (.surface - [(.surface | sort | first)])' released-surface.json \
-            > "$RUNNER_TEMP/one-removed.json"
-          jq '.surface = (.surface + ["refusal-self-test:a-name-no-release-ever-had"])' \
-            released-surface.json > "$RUNNER_TEMP/one-added.json"
-
-          # The rule's exit status is tested explicitly, and nothing here reads a verdict
-          # out of a command substitution containing a pipeline, where the status would be
-          # discarded and a dead rule would read as an empty answer.
-          assert_change() {
-            autoversion decide --current "$released" \
-              --published-surface released-surface.json \
-              --candidate-surface "$candidate" --json > "$RUNNER_TEMP/probe.json" || {
-                echo "::error::the rule failed on $candidate, so its verdict is unknown"
-                false
-              }
-            change="$(jq -r .change "$RUNNER_TEMP/probe.json")"
-            if [ "$change" != "$want" ]; then
-              echo "::error::what answers to autoversion called $candidate '$change'" \
-                "instead of '$want', so it is not the rule and its verdict about the real" \
-                "candidate means nothing."
-              false
-            fi
-            echo "$candidate reads as $want, as the rule requires."
-          }
-
-          candidate="$RUNNER_TEMP/one-removed.json"; want=breaking; assert_change
-          candidate="$RUNNER_TEMP/one-added.json"; want=additive; assert_change
-          candidate=released-surface.json; want=internal; assert_change
-
-          verdict="$(autoversion decide \
+          verdict="$(stado release version-gate decide --json \
             --current "$released" \
-            --published-surface released-surface.json \
-            --candidate-surface "$RUNNER_TEMP/candidate.json" \
-            --json)"
+            --published-surface "$RUNNER_TEMP/released.json" \
+            --candidate-surface "$RUNNER_TEMP/candidate.json")"
           echo "$verdict"
-
           change="$(printf '%s' "$verdict" | jq -r .change)"
           required="$(printf '%s' "$verdict" | jq -r .next)"
-
           if [ "$declared" = "$released" ]; then
-            if [ "$change" != "internal" ]; then
-              echo "::error::The public contract changed ($change) but setup.py still" \
-                "declares the released version $released. The next version must be $required."
+            if [ "$change" != internal ]; then
+              echo "::error::the surface changed ($change) but setup.py still declares $released; the next version must be $required."
               false
             fi
-            echo "Nothing released yet and the contract is unchanged."
+            echo "setup.py remains $released and the surface is unchanged."
           elif [ "$declared" != "$required" ]; then
-            echo "::error::setup.py declares $declared, but a $change change to" \
-              "$released requires $required."
+            echo "::error::setup.py declares $declared, but a $change change to $released requires $required."
             false
           else
-            echo "Declared version matches the $change change."
+            echo "setup.py $declared matches the $change change."
           fi
-
-      - name: Refuse a baseline that misstates where it came from
-        run: |
-          set -euo pipefail
-          # RUNNER_TEMP only exists on a runner, hence the fallback, which is also what
-          # lets this body be extracted and run locally.
-          : "${RUNNER_TEMP:=$(mktemp -d)}"
-
-          # released-surface.json must say which artifact it was recovered from, and the
-          # marker -- the first whitespace-delimited token of "source" -- is that claim.
-          # tests/versioning_baseline.py writes it, so the two files agree through a grammar rather
-          # than through prose that drifts. `first`, never a bare subscript.
-          #
-          # This replaces the narrower check that used to live here, which asked only
-          # whether the baseline's *version* is on PyPI, read the answer from `curl -sSf`'s
-          # exit status with no positive control, and ran on main alone -- so a pull
-          # request could merge a baseline recovered from nothing at all. It is one step,
-          # not two, because the artifact check subsumes the version check: an artifact
-          # PyPI serves for that version cannot exist if the version does not.
-          marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
-          released="$(jq -r .version released-surface.json)"
-          # An empty or null marker must never reach the comparisons below: it would be
-          # compared against an equally empty expectation and pass vacuously, which is the
-          # one outcome a frozen file exists to prevent.
-          case "${marker:-}" in
-            ''|null)
-              echo "::error::released-surface.json yielded no marker. The file is malformed" \
-                "or .source is missing, so nothing here can be checked."
-              false ;;
-          esac
-          tier="${marker%%:*}"
-          artifact="${marker#*:}"
-          # `${marker#*:}` gives back the whole marker when there is no colon at all, so
-          # this catches both a marker with an empty tail and a bare word that names no
-          # artifact -- `head` without a sha, or prose that lost its grammar.
-          case "$artifact" in
-            ''|"$marker")
-              echo "::error::marker '$marker' names no artifact: the grammar is" \
-                "<tier>:<artifact>, and everything after the first space is prose. Run" \
-                "python3 tests/versioning_baseline.py --write."
-              false ;;
-          esac
-          echo "marker: $marker"
-
-          # The distribution name comes from the manifest, the same place the declared
-          # version above comes from, never from a literal repeated here where it could
-          # drift away from what setup.py publishes. PyPI answers *generically* about a
-          # project it has never heard of, so an empty or mangled name would be asked
-          # about and its answer read as proven absence: assert the input first.
-          project="$(awk -F'"' '/name=/{print $2; exit}' setup.py)"
-          case "${project:-}" in
-            ''|*[!a-zA-Z0-9._-]*)
-              echo "::error::setup.py yielded no usable distribution name" \
-                "('${project:-<nothing>}'), so any question asked of PyPI would be about" \
-                "the wrong subject and its answer would mean nothing."
-              false ;;
-          esac
-
-          # Three states, never two: named, stated-absent, unproven. An index that says it
-          # has no such project and an index that could not be reached are different facts
-          # that a client's exit status collapses into one, and the wrong reading is always
-          # the passing one. So absence is read from the answer's CONTENT, and presence is
-          # believed only when the document names the subject back -- an error page, a
-          # rate-limit page or a 403 fails all of it and reads `unproven`, which is not the
-          # same as fine. The `|| true` is safe only because every branch below demands
-          # specific content and the fallthrough refuses.
-          fetch() {
-            curl -s -H "User-Agent: wisent-extractors version-check" \
-              "https://pypi.org/pypi/$1/json" > "$2" || true
-          }
-          state() {
-            if jq -e --arg want "$2" \
-                 '((.info.name // "") | ascii_downcase | gsub("[-_.]+"; "-"))
-                  == ($want | ascii_downcase | gsub("[-_.]+"; "-"))' "$1" >/dev/null 2>&1; then
-              echo named
-            elif jq -e '(.message // "") | ascii_downcase | contains("not found")' \
-                 "$1" >/dev/null 2>&1; then
-              echo absent
-            else
-              echo unproven
-            fi
-          }
-
-          fetch "$project" "$RUNNER_TEMP/subject.json"
-          # Fail-closed twin, pointed at the positive branch. Content-reading already
-          # covers transport silence, which makes this look redundant -- it is not,
-          # because `unproven` is also what a broken expression produces: a jq path that
-          # can no longer recognise a published project refuses forever while PyPI answers
-          # perfectly, and the operator blames the registry. It runs through the same
-          # function, the same URL shape and the same credential as the subject -- namely
-          # none, since PyPI serves this anonymously -- so it is a control and not a
-          # second subject, and `pip` is a project PyPI certainly serves.
-          fetch pip "$RUNNER_TEMP/control.json"
-          control="$(state "$RUNNER_TEMP/control.json" pip)"
-          if [ "$control" != named ]; then
-            echo "::error::this step read '$control' for pip, which PyPI definitely serves," \
-              "so it cannot recognise a published project and its verdict about" \
-              "$project is meaningless. Fix the check; do not read its answer as absence."
-            false
-          fi
-          subject="$(state "$RUNNER_TEMP/subject.json" "$project")"
-          echo "PyPI on $project: $subject"
-
-          case "$tier" in
-            pypi-sdist)
-              # Forward: the marker claims a published sdist, so PyPI must serve that exact
-              # filename for the baselined version. This is also what makes the version
-              # *discriminate* the build rather than merely exist -- the filename carries
-              # the number, so the answer names the artifact somebody installed.
-              if [ "$subject" != named ]; then
-                echo "::error::the marker claims a published sdist, but PyPI's answer about" \
-                  "$project read '$subject', so the baseline's provenance is unproven."
-                false
-              fi
-              served="$(jq -r --arg want "$released" \
-                '[(.releases[$want] // [])[] | select(.packagetype == "sdist") | .filename]
-                 | join(" ")' "$RUNNER_TEMP/subject.json")"
-              case " $served " in
-                *" $artifact "*) ;;
-                *)
-                  echo "::error::released-surface.json says it was recovered from" \
-                    "$artifact, but PyPI serves '${served:-no sdist at all}' for $released." \
-                    "Either the baseline was hand-edited or that release was withdrawn;" \
-                    "every later comparison is measured against something nobody can" \
-                    "install. Run python3 tests/versioning_baseline.py --write."
-                  false ;;
-              esac
-              echo "PyPI serves $artifact for $released, as the marker claims."
-
-              # Being honest about the tier is not being on the best one. A newer sdist can
-              # appear after the baseline was frozen, leaving the marker truthful and the
-              # baseline stale while the gate measures a superseded artifact. Whole marker,
-              # not the prefix: comparing prefixes would pass a baseline naming the right
-              # kind of artifact and the wrong one. Only the marker is checked here -- the
-              # committed surface stays the only surface any decision sees, because
-              # recomputing both sides at check time is the one shape that structurally
-              # cannot refuse.
-              best="$(jq -r '[(.releases[.info.version] // .urls // [])[]
-                              | select(.packagetype == "sdist") | .filename] | first // ""' \
-                     "$RUNNER_TEMP/subject.json")"
-              case "${best:-}" in
-                ''|null)
-                  echo "::error::this step could not read the newest published sdist out of" \
-                    "PyPI's answer, so whether the baseline is stale is unproven. That is" \
-                    "not the same as up to date."
-                  false ;;
-              esac
-              if [ "pypi-sdist:$best" != "$marker" ]; then
-                echo "::error::the baseline is '$marker' but 'pypi-sdist:$best' is published" \
-                  "now, so the gate is measuring a superseded artifact. Run" \
-                  "python3 tests/versioning_baseline.py --write."
-                false
-              fi
-              echo "Baseline $released at '$marker' is still the best reachable artifact."
-              ;;
-            pypi-wheel|npm-tarball|crates-io|stado|gh-release|git-archive|head)
-              # Every one of these is a real marker in the fleet grammar and none of them is
-              # a baseline this repository can honestly hold: tests/versioning_baseline.py produces
-              # pypi-sdist only, because setup.py publishes a PyPI distribution and PyPI
-              # serves an sdist for it. A wheel, a tag or a sha here would measure this
-              # package against a lower tier than the one that exists, and a foreign
-              # registry would measure it against another product entirely. The reverse
-              # assertion is quoted rather than assumed, and it is quoted in three states,
-              # so the message says which of them the operator is actually looking at.
-              case "$subject" in
-                named)
-                  echo "::error::marker $marker claims the baseline came from something" \
-                    "other than a published sdist, but PyPI names $project, so an sdist" \
-                    "tier is available and this one is lower. Run" \
-                    "python3 tests/versioning_baseline.py --write." ;;
-                absent)
-                  echo "::error::marker $marker claims a tier below pypi-sdist and PyPI" \
-                    "states it serves no $project. This repository has published sdists" \
-                    "throughout its history, so a person must establish that the" \
-                    "distribution was withdrawn before a lower tier is accepted; this gate" \
-                    "cannot check a tier its generator never writes." ;;
-                *)
-                  echo "::error::marker $marker claims a tier below pypi-sdist, and PyPI" \
-                    "did not answer about $project, so the absence such a tier claims is" \
-                    "unproven -- which is not the same as absence." ;;
-              esac
-              false
-              ;;
-            *)
-              echo "::error::unknown baseline marker: $marker. tests/versioning_baseline.py emits" \
-                "pypi-sdist; the fleet grammar also knows pypi-wheel, npm-tarball," \
-                "crates-io, stado, gh-release, git-archive and head. Anything else means" \
-                "the file was hand-edited, and a person decides rather than this gate" \
-                "accepting a baseline it cannot check."
-              false
-              ;;
-          esac
