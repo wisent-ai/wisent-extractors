@@ -8,9 +8,6 @@ assets/readme-banner.svg
 # `tama declare-root`, which refuses to write this while the root still
 # holds a file somebody could move.
 #   .gitignore — git
-#   .wisent-release.json — the Wisent release tooling
 #   LICENSE — GitHub reads the licence from the root
 #   README.md — GitHub shows it on the repository page
-#   pyproject.toml — pip and the Python build backends
-#   setup.py — pip
 .

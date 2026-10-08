@@ -8,41 +8,42 @@
 [![Source](https://img.shields.io/badge/GitHub-Source-181717?logo=github)](https://github.com/wisent-ai/wisent-extractors) [![Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github)](https://github.com/wisent-ai/wisent-extractors/issues) [![Wisent](https://img.shields.io/badge/Wisent-Website-0B0B0B)](https://wisent.com) [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/qRjpkthq54) [![LinkedIn](https://img.shields.io/badge/LinkedIn-Follow-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/wisent-ai/) [![X](https://img.shields.io/badge/X-Follow-000000?logo=x&logoColor=white)](https://x.com/wisentai) [![Enterprise](https://img.shields.io/badge/Enterprise-Book%20a%20call-0B0B0B?logo=calendly)](https://calendly.com/lbartoszcze)
 <!-- wisent-readme-signals:end -->
 
-# wisent-extractors
+# wisent-extractors (superseded)
 
-Monitor and Control Your AI Agent Brain.
+This repository held `wisent-extractors`, a Python package with one extractor
+per benchmark — lm-eval-harness tasks under `wisent.extractors.lm_eval` and
+HuggingFace datasets under `wisent.extractors.hf` — each turning a benchmark's
+rows into contrastive pairs. It imported its pair types, logger and model
+wrapper from the `wisent` package (`wisent.core…`), which the Rust cutover
+replaced with [Ster](https://github.com/wisent-ai/ster), so none of it could
+be imported any longer; the fleet holds no Python. The package, its release
+manifest and its publishing workflows were removed. The versions already on
+PyPI remain as published.
 
-You look at what your model says. But what was it actually thinking? Wisent shows
-you how to use information from AI activations, intermediate steps within its
-layers, to your advantage. Wisent is a full toolkit for representation
-engineering, activation steering and mechanistic interpretability. Cut
-hallucination rates, decensor your model or stop it from being detected by
-AI-generated text detectors. Your Models — Yours to Control. Better than
-fine-tuning. Better than analysing the outputs directly.
+The extractors also decided with numbers and guesses nobody stated: an answer
+letter turned into an index by arithmetic, the next choice taken as the wrong
+answer, a missing answer read as index zero, a missing toxicity score read as
+safe, HaluLens cut at 100 items, a fixed MOCHA score threshold and a fixed
+generated BFCL argument. Their replacement guesses none of them.
 
-Deploy the latest research in your stack. This is where the benchmark extractors
-live — 676 of them for lm-eval-harness tasks.
+| `wisent-extractors` | Ster |
+|---|---|
+| a multiple-choice extractor (ARC, HellaSwag, MMLU, PIQA, …) | `ster pairs import --benchmark choices`, told where the row keeps its question, choices and answer |
+| TruthfulQA, Do-Not-Answer, LiveCodeBench | `ster pairs import --benchmark truthfulqa`, `dna`, `livecodebench` |
+| an extractor that generated its incorrect side | `ster pairs synthesize`, which writes both sides with a stated model and records how |
 
-- `wisent.extractors.lm_eval` — 676 extractors for lm-eval-harness tasks
-- `wisent.extractors.hf` — 223 extractors for wisent-proprietary HuggingFace benchmarks
+Export a dataset's split as JSON Lines (one row per line) and name its schema:
 
-## Install
-
+```bash
+# ARC-Easy rows: {"question": …, "choices": {"text": [...], "label": ["A", …]}, "answerKey": "B"}
+ster pairs import --benchmark choices --source arc_easy.jsonl --seed <SEED> --output arc.pairs.json \
+  --question /question --choices /choices/text --answer /answerKey --answer-form label --labels /choices/label
 ```
-pip install wisent-extractors
-```
 
-## Usage
-
-```python
-from wisent.extractors.lm_eval.registry.lm_extractor_registry import get_extractor
-
-extractor = get_extractor("gsm8k")
-pairs = extractor.extract_contrastive_pairs(limit=100)
-```
-
-## Namespace packaging
-
-This package is a namespace package that shares the `wisent.*` import root
-with `wisent-core` and `wisent-evaluators`. All three can be installed
-side-by-side without conflict.
+`--answer-form` is `index` (the choice's position from zero), `label` (one of
+the row's `--labels`) or `text` (the choice itself). A row whose answer is
+missing or does not resolve is skipped with its row and reason, and every row
+is read unless `--count` keeps fewer. Ster's
+[pair-sets guide](https://github.com/wisent-ai/ster/blob/main/docs/guide/pair-sets.md)
+lists the refusals; the pair set it writes is what `ster train`,
+`ster optimize` and `ster evaluate` read.
